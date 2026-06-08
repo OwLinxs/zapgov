@@ -34,8 +34,6 @@ const NAV_FOOT: NavDef[] = [
   { href: "/departamentos", label: "Departamentos", icon: "building", roles: ["admin"] },
   { href: "/auditoria", label: "Auditoria", icon: "list", roles: ["admin", "supervisor"] },
   { href: "/config", label: "Configurações", icon: "settings", roles: ["admin"] },
-  { href: "/superadmin", label: "Super Admin", icon: "shield", roles: ["admin"] },
-  { href: "/ds", label: "Design System", icon: "layers" },
 ];
 
 const PAPEL_LABEL: Record<Papel, string> = {
