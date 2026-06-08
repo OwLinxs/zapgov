@@ -73,6 +73,23 @@ func main() {
 	}
 
 	app := fiber.New(fiber.Config{AppName: "ZapGov API"})
+
+	// Aceita o prefixo /api e o remove internamente. Permite servir API e front
+	// no MESMO domínio atrás de um proxy simples (o proxy só encaminha /api ->
+	// backend, sem precisar reescrever o caminho). /webhook segue na raiz.
+	app.Use(func(c *fiber.Ctx) error {
+		p := c.Path()
+		if p == "/api" || p == "/api/" {
+			c.Path("/")
+			return c.RestartRouting()
+		}
+		if strings.HasPrefix(p, "/api/") {
+			c.Path(p[len("/api"):])
+			return c.RestartRouting()
+		}
+		return c.Next()
+	})
+
 	app.Use(obs.Recover())
 	app.Use(obs.RequestLogger())
 	// CORS para o front Next (dev em :3000). Restringir em produção.
