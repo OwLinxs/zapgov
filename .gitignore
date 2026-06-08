@@ -1,0 +1,20 @@
+# Versiona backend/, web/, deploy/ e o compose de produção. Resto fica de fora.
+/*
+!/backend/
+!/web/
+!/deploy/
+!/docker-compose.prod.yml
+!/.gitignore
+
+# Segredos — nunca versionar (mesmo dentro das pastas acima)
+backend/.env
+*.env.local
+
+# Build / deps / backups
+node_modules/
+web/.next/
+web/out/
+*.sql
+*.sql.gz
+.DS_Store
+*.log

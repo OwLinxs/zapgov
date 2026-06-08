@@ -1,0 +1,19 @@
+# Serviço do painel (Next.js) — front fora do Docker.
+# Copie para /etc/systemd/system/zapgov-web.service e ajuste WorkingDirectory/User.
+# IMPORTANTE: NEXT_PUBLIC_API_URL é assado no BUILD (npm run build), não aqui.
+[Unit]
+Description=ZapGov Painel (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/zapgov/web
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+User=zapgov
+
+[Install]
+WantedBy=multi-user.target

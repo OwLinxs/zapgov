@@ -1,0 +1,12 @@
+# Auto-deploy (oneshot, disparado pelo timer). Roda como root p/ docker + systemctl.
+# Copie para /etc/systemd/system/ e ajuste o caminho do projeto.
+[Unit]
+Description=ZapGov auto-update (puxa Git e implanta se houver mudança)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/zapgov
+ExecStart=/opt/zapgov/deploy/auto-update.sh
+# Saída vai pro journal: journalctl -u zapgov-autoupdate -f

@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zapgov
+      POSTGRES_PASSWORD: zapgov
+      POSTGRES_DB: zapgov
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zapgov"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgres://zapgov:zapgov@postgres:5432/zapgov?sslmode=disable",
+        "up",
+      ]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      # Sobrescreve host do banco e do redis para a rede do compose.
+      DATABASE_URL: postgres://zapgov:zapgov@postgres:5432/zapgov?sslmode=disable
+      REDIS_ADDR: redis:6379
+    # DNS: o resolver embutido do Docker (127.0.0.11→8.8.8.8) não alcança nesta
+    # rede. Usa o DNS do roteador (1º) com fallback público. Ajuste o 1º IP se
+    # trocar de rede.
+    dns:
+      - 192.168.0.44
+      - 1.1.1.1
+    ports:
+      - "8080:8080"
+
+  worker:
+    build: .
+    entrypoint: ["/bin/worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://zapgov:zapgov@postgres:5432/zapgov?sslmode=disable
+      REDIS_ADDR: redis:6379
+    dns:
+      - 192.168.0.44
+      - 1.1.1.1
+
+volumes:
+  pgdata:

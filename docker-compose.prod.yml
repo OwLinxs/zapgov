@@ -1,0 +1,79 @@
+# Produção — ZapGov backend (servidor interno da prefeitura).
+# O FRONT roda fora do Docker, como serviço Node/systemd (ver deploy/README.md).
+# Exposição à internet é por um proxy/DMZ na frente (TLS + webhook).
+# A porta 8080 (API) NÃO deve ser pública — só o proxy a alcança.
+#
+# Variáveis (arquivo .env nesta pasta — ver deploy/README.md):
+#   DB_PASSWORD   senha do Postgres
+#   APP_ORIGIN    URL pública do painel (ex.: https://app.zap.prefeitura.gov.br)
+# Segredos do app (JWT, Meta) ficam em backend/.env.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zapgov
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      POSTGRES_DB: zapgov
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zapgov"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/migrations:/migrations
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgres://zapgov:${DB_PASSWORD}@postgres:5432/zapgov?sslmode=disable",
+        "up",
+      ]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://zapgov:${DB_PASSWORD}@postgres:5432/zapgov?sslmode=disable
+      REDIS_ADDR: redis:6379
+      CORS_ORIGINS: ${APP_ORIGIN:?defina APP_ORIGIN no .env}
+    ports:
+      - "8080:8080" # só o proxy/DMZ acessa (firewall bloqueia internet)
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    entrypoint: ["/bin/worker"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://zapgov:${DB_PASSWORD}@postgres:5432/zapgov?sslmode=disable
+      REDIS_ADDR: redis:6379
+
+volumes:
+  pgdata:

@@ -1,0 +1,11 @@
+# Dispara o auto-update a cada 2 minutos. Copie para /etc/systemd/system/.
+[Unit]
+Description=Verifica o Git e implanta o ZapGov periodicamente
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
