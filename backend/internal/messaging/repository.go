@@ -458,7 +458,7 @@ func (r *Repository) ResolveBulk(ctx context.Context, ids []int64) (int, error) 
 		return 0, err
 	}
 	tag, err := r.pool.Exec(ctx,
-		`UPDATE conversations SET status = 'resolvido' WHERE id = ANY($1) AND tenant_id = $2 AND status IN ('aguardando','em_atendimento')`, ids, tid)
+		`UPDATE conversations SET status = 'resolvido' WHERE id = ANY($1) AND tenant_id = $2 AND status <> 'resolvido'`, ids, tid)
 	if err != nil {
 		return 0, err
 	}

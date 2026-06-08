@@ -516,7 +516,7 @@ export default function InboxPage() {
   );
 
   // Conversas ativas no filtro atual (podem ser finalizadas em massa).
-  const ativasFiltradas = filtered.filter((c) => c.status === "aguardando" || c.status === "em_atendimento");
+  const ativasFiltradas = filtered.filter((c) => c.status !== "resolvido");
 
   async function finalizarEmMassa() {
     setBulkConfirm(false);
@@ -560,7 +560,7 @@ export default function InboxPage() {
           <div className="row center" style={{ gap: 8, marginBottom: 12 }}>
             <span className="badge badge-pending">{convs.filter((c) => c.status === "aguardando").length} na fila</span>
             <span className="muted" style={{ fontSize: 11.5 }}>
-              {convs.length} conversas
+              {convs.filter((c) => c.status === "aguardando" || c.status === "em_atendimento").length} abertas
             </span>
           </div>
           <div className="row" style={{ gap: 8 }}>
@@ -756,7 +756,7 @@ export default function InboxPage() {
                       ))}
                   </>
                 )}
-                {(active.status === "aguardando" || active.status === "em_atendimento") && (
+                {active.status !== "resolvido" && (
                   <>
                     <div className="dropdown-sep" />
                     <div className="dropdown-item" onClick={resolver}>
