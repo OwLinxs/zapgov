@@ -31,6 +31,8 @@ func (h *Handler) Register(r fiber.Router, admin fiber.Handler) {
 	r.Put("/settings/assinatura", admin, h.putAssinatura)
 	r.Get("/settings/roteamento", h.getRoteamento)
 	r.Put("/settings/roteamento", admin, h.putRoteamento)
+	r.Get("/settings/chatbot", h.getChatbot)
+	r.Put("/settings/chatbot", admin, h.putChatbot)
 	r.Get("/settings/meta", h.getMeta)
 	r.Get("/settings/billing", h.getBilling)
 	r.Get("/settings/apikey", admin, h.getApiKey)
@@ -136,6 +138,27 @@ func (h *Handler) putRoteamento(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
 	}
 	if err := h.repo.SetRoteamento(c.Context(), rt); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) getChatbot(c *fiber.Ctx) error {
+	on, err := h.repo.GetChatbot(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ativo": on})
+}
+
+func (h *Handler) putChatbot(c *fiber.Ctx) error {
+	var b struct {
+		Ativo bool `json:"ativo"`
+	}
+	if err := c.BodyParser(&b); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	if err := h.repo.SetChatbot(c.Context(), b.Ativo); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"ok": true})

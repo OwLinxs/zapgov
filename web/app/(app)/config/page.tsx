@@ -10,6 +10,7 @@ import {
   getAusencia, saveAusencia,
   getAssinatura, saveAssinatura,
   getRoteamento, saveRoteamento,
+  getChatbotAtivo, saveChatbotAtivo,
   listWebhooks, createWebhook, deleteWebhook,
   listUsers, createUser, updateUser, resetUserPassword,
   listDepartments,
@@ -240,6 +241,7 @@ function AtendimentoSection() {
   const [feriados, setFeriados] = useState<string[]>([]);
   const [assinatura, setAssinatura] = useState(false);
   const [rot, setRot] = useState<SettingsRoteamento>({ por_setor: false, por_etiqueta: false });
+  const [chatbot, setChatbot] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -247,6 +249,7 @@ function AtendimentoSection() {
     getAusencia().then((a) => { setAus(a); setFeriados(a.feriados || []); }).catch(() => {});
     getAssinatura().then((a) => setAssinatura(a.ativo)).catch(() => {});
     getRoteamento().then(setRot).catch(() => {});
+    getChatbotAtivo().then((c) => setChatbot(c.ativo)).catch(() => {});
   }, []);
 
   if (!enc || !aus) return <Skel h={320} />;
@@ -259,6 +262,7 @@ function AtendimentoSection() {
         saveAusencia({ ativo: aus!.ativo, fim_semana: aus!.fim_semana, feriado: aus!.feriado, feriados }),
         saveAssinatura(assinatura),
         saveRoteamento(rot),
+        saveChatbotAtivo(chatbot),
       ]);
       toast({ type: "success", title: "Alterações salvas" });
     } catch (e) {
@@ -321,6 +325,21 @@ function AtendimentoSection() {
       {/* Roteamento por departamento */}
       <div className="card card-pad col" style={{ gap: 14, marginTop: 16 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>Roteamento de atendimento</div>
+        <label className="row center" style={{ gap: 10, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={chatbot}
+            onChange={(e) => setChatbot(e.target.checked)}
+            style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
+          />
+          <div className="col" style={{ gap: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Chatbot ativo</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Desligado: a mensagem do cidadão vai <b>direto pra fila</b> (atendente assume), sem menu nem auto-resposta do bot.
+            </div>
+          </div>
+        </label>
+        <div style={{ height: 1, background: "var(--border-subtle)" }} />
         <label className="row center" style={{ gap: 10, cursor: "pointer" }}>
           <input
             type="checkbox"

@@ -105,6 +105,20 @@ func (r *Repository) SetRoteamento(ctx context.Context, rt Roteamento) error {
 	return err
 }
 
+// GetChatbot diz se o chatbot está ativo. Desligado: inbound vai direto pra fila.
+func (r *Repository) GetChatbot(ctx context.Context) (bool, error) {
+	tid := tenantctx.From(ctx)
+	r.ensure(ctx, tid)
+	var on bool
+	err := r.pool.QueryRow(ctx, `SELECT chatbot_ativo FROM org_settings WHERE tenant_id = $1`, tid).Scan(&on)
+	return on, err
+}
+
+func (r *Repository) SetChatbot(ctx context.Context, on bool) error {
+	_, err := r.pool.Exec(ctx, `UPDATE org_settings SET chatbot_ativo = $1 WHERE tenant_id = $2`, on, tenantctx.From(ctx))
+	return err
+}
+
 // GetAssinatura diz se a assinatura do atendente vai no fim das mensagens.
 func (r *Repository) GetAssinatura(ctx context.Context) (bool, error) {
 	tid := tenantctx.From(ctx)

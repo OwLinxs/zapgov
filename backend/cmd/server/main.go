@@ -206,6 +206,14 @@ func main() {
 		rt, _ := settingsRepo.GetRoteamento(ctx)
 		return rt.PorSetor
 	}
+	// Chatbot on/off: desligado, inbound vai direto pra fila.
+	svc.ChatbotEnabled = func(ctx context.Context) bool {
+		on, err := settingsRepo.GetChatbot(ctx)
+		if err != nil {
+			return true // em erro, mantém o bot (comportamento padrão)
+		}
+		return on
+	}
 	// Auto-etiqueta: ao assumir, aplica uma etiqueta com o nome do atendente.
 	msgHandler.TagAttendant = func(ctx context.Context, convID int64, nome string) {
 		if nome == "" {

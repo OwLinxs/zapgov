@@ -500,6 +500,9 @@ export interface SettingsRoteamento {
 }
 export const getRoteamento = () => get<SettingsRoteamento>("/settings/roteamento");
 export const saveRoteamento = (r: SettingsRoteamento) => post("/settings/roteamento", r, "PUT");
+
+export const getChatbotAtivo = () => get<{ ativo: boolean }>("/settings/chatbot");
+export const saveChatbotAtivo = (ativo: boolean) => post("/settings/chatbot", { ativo }, "PUT");
 export const getMeta = () => get<SettingsMeta>("/settings/meta");
 export const getBilling = () => get<SettingsBilling>("/settings/billing");
 export const getApiKey = () => get<{ api_key: string }>("/settings/apikey");

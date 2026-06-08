@@ -54,6 +54,10 @@ type Service struct {
 	// de ausência (fim de semana/feriado) com auto-resposta ativa. Usado para
 	// avisar o cidadão fora do horário de atendimento.
 	AbsenceMessage func(ctx context.Context) (string, bool)
+
+	// ChatbotEnabled, se definido e false, desliga o bot: a mensagem do cidadão
+	// vai direto pra fila (aguardando), sem menu/auto-resposta.
+	ChatbotEnabled func(ctx context.Context) bool
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -275,6 +279,14 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		// Já está na fila ou em atendimento humano → o bot NÃO responde
 		// (senão reiniciaria o menu a cada mensagem). Atendente assume.
 		if st, _ := s.repo.ConversationStatus(ctx, convID); st == "aguardando" || st == "em_atendimento" {
+			continue
+		}
+
+		// Chatbot desligado → manda direto pra fila, sem menu/auto-resposta.
+		if s.ChatbotEnabled != nil && !s.ChatbotEnabled(ctx) {
+			if err := s.repo.Enqueue(ctx, convID); err == nil {
+				s.emit(ctx, 0, "conversation")
+			}
 			continue
 		}
 
