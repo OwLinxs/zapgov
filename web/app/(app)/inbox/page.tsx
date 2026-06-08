@@ -26,6 +26,7 @@ import {
   sendMedia,
   sendTemplate,
   listContacts,
+  createContact,
   listTemplates,
   claimConversation,
   transferConversation,
@@ -77,6 +78,8 @@ function NovaConversaModal({
   const [aprovados, setAprovados] = useState<ApiTemplate[]>([]);
   const [q, setQ] = useState("");
   const [contato, setContato] = useState<ApiContact | null>(null);
+  const [numero, setNumero] = useState(""); // número avulso (dígitos), sem contato
+  const [nomeNovo, setNomeNovo] = useState(""); // nome opcional p/ auto-cadastro
   const [tpl, setTpl] = useState<ApiTemplate | null>(null);
   const [vars, setVars] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -85,6 +88,8 @@ function NovaConversaModal({
     if (!open) return;
     setQ("");
     setContato(null);
+    setNumero("");
+    setNomeNovo("");
     setTpl(null);
     setVars({});
     listContacts().then(setContatos).catch(() => setContatos([]));
@@ -97,33 +102,48 @@ function NovaConversaModal({
       .catch(() => setAprovados([]));
   }, [open]);
 
-  // Ao trocar template ou escolher contato, reseta variáveis e auto-preenche a {{1}} com o 1º nome.
+  // Ao trocar template/destinatário, reseta variáveis e auto-preenche a {{1}} com o 1º nome.
   useEffect(() => {
-    setVars(contato ? { "1": contato.nome.split(" ")[0] } : {});
-  }, [tpl, contato]);
+    const nome = contato?.nome || nomeNovo;
+    setVars(nome ? { "1": nome.split(" ")[0] } : {});
+  }, [tpl, contato, nomeNovo]);
 
   const rows = contatos
     .filter((c) => !q || c.nome.toLowerCase().includes(q.toLowerCase()) || c.cpf.includes(q) || c.telefone.includes(q))
     .slice(0, 6);
+
+  // Número avulso: se a busca tem só dígitos suficientes e não casa com contato.
+  // Prefixa 55 (BR) quando faltar DDI, senão a Meta recusa.
+  const normBR = (d: string) => (d.startsWith("55") || d.length > 11 ? d : d.length >= 10 ? "55" + d : d);
+  const qDigits = normBR(q.replace(/\D/g, ""));
+  const podeAvulso = q.replace(/\D/g, "").length >= 10 && rows.length === 0;
+  // Destinatário final (telefone): contato OU número avulso.
+  const destTel = contato?.telefone || numero;
 
   const nVars = tpl?.variables || 0;
   const corpo = tpl ? tpl.body.replace(/\{\{(\d+)\}\}/g, (m, n) => vars[n] || m) : "";
   const varsOk = Array.from({ length: nVars }, (_, i) => vars[String(i + 1)]?.trim()).every(Boolean);
 
   async function iniciar() {
-    if (!contato || !tpl || !varsOk) return;
+    if (!destTel || !tpl || !varsOk) return;
     setSending(true);
     try {
       const params = Array.from({ length: nVars }, (_, i) => vars[String(i + 1)] || "");
       await sendTemplate({
-        to: contato.telefone,
+        to: destTel,
         template: tpl.name,
         language: tpl.language,
         params,
         preview: corpo,
       });
-      toast({ type: "wa", title: "Conversa iniciada", message: "Template enviado a " + contato.nome.split(" ")[0] });
-      onSent(contato.telefone);
+      // Número avulso (sem contato): cadastra automaticamente após o envio.
+      if (!contato && numero) {
+        const nome = nomeNovo.trim() || ("Contato " + numero);
+        try { await createContact({ nome, telefone: numero }); } catch { /* já existe ou falhou: ignora */ }
+      }
+      const quem = contato?.nome.split(" ")[0] || nomeNovo.trim() || numero;
+      toast({ type: "wa", title: "Conversa iniciada", message: "Template enviado a " + quem });
+      onSent(destTel);
       onClose();
     } catch (e) {
       toast({ type: "error", title: "Falha ao iniciar", message: (e as Error).message });
@@ -141,7 +161,7 @@ function NovaConversaModal({
       <div className="modal-body" style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20, maxHeight: "62vh", overflowY: "auto" }}>
         <div className="col" style={{ gap: 16 }}>
         <Field label="1 · Para quem?">
-          <Input icon="search" placeholder="Buscar contato por nome, CPF ou telefone…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          <Input icon="search" placeholder="Buscar contato ou digitar um número (DDD + número)…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
         </Field>
         {contato ? (
           <div className="row center between" style={{ padding: "10px 12px", borderRadius: 9, background: "var(--brand-soft)", border: "1px solid var(--brand)" }}>
@@ -156,25 +176,60 @@ function NovaConversaModal({
               <Icon name="x" size={15} />
             </button>
           </div>
-        ) : (
-          <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--border-subtle)", borderRadius: 9 }}>
-            {rows.length === 0 ? (
-              <div className="muted" style={{ padding: 16, fontSize: 12.5, textAlign: "center" }}>Nenhum contato encontrado.</div>
-            ) : (
-              rows.map((c) => (
-                <div key={c.id} className="recip-row" style={{ cursor: "pointer" }} onClick={() => setContato(c)}>
-                  <Avatar name={c.nome} size={30} />
-                  <div className="col grow" style={{ gap: 0, minWidth: 0 }}>
-                    <span className="strong" style={{ fontSize: 13 }}>{c.nome}</span>
-                    <span className="mono faint" style={{ fontSize: 11 }}>{c.telefone}</span>
-                  </div>
-                  {c.setor && (
-                    <span className="tag">
-                      <span className="tag-dot" style={{ background: SETOR_COR[c.setor] || "var(--text-faint)" }} /> {c.setor}
-                    </span>
-                  )}
+        ) : numero ? (
+          <div className="col" style={{ gap: 10, padding: "10px 12px", borderRadius: 9, background: "var(--brand-soft)", border: "1px solid var(--brand)" }}>
+            <div className="row center between">
+              <div className="row center" style={{ gap: 10 }}>
+                <Avatar name={nomeNovo || "?"} size={32} />
+                <div className="col" style={{ gap: 0 }}>
+                  <span className="strong" style={{ fontSize: 13.5 }}>Número avulso</span>
+                  <span className="mono faint" style={{ fontSize: 11.5 }}>{numero}</span>
                 </div>
-              ))
+              </div>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => { setNumero(""); setNomeNovo(""); }}>
+                <Icon name="x" size={15} />
+              </button>
+            </div>
+            <Input value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} placeholder="Nome (opcional — será cadastrado ao enviar)" />
+          </div>
+        ) : (
+          <div style={{ border: "1px solid var(--border-subtle)", borderRadius: 9, overflow: "hidden" }}>
+            <div style={{ maxHeight: 150, overflowY: "auto" }}>
+              {rows.length === 0 ? (
+                <div className="muted" style={{ padding: 16, fontSize: 12.5, textAlign: "center" }}>
+                  {podeAvulso ? "Nenhum contato — use o número avulso abaixo." : "Nenhum contato encontrado."}
+                </div>
+              ) : (
+                rows.map((c) => (
+                  <div key={c.id} className="recip-row" style={{ cursor: "pointer" }} onClick={() => setContato(c)}>
+                    <Avatar name={c.nome} size={30} />
+                    <div className="col grow" style={{ gap: 0, minWidth: 0 }}>
+                      <span className="strong" style={{ fontSize: 13 }}>{c.nome}</span>
+                      <span className="mono faint" style={{ fontSize: 11 }}>{c.telefone}</span>
+                    </div>
+                    {c.setor && (
+                      <span className="tag">
+                        <span className="tag-dot" style={{ background: SETOR_COR[c.setor] || "var(--text-faint)" }} /> {c.setor}
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            {podeAvulso && (
+              <div
+                className="recip-row"
+                style={{ cursor: "pointer", borderTop: "1px solid var(--border-subtle)", background: "var(--bg-sunken)" }}
+                onClick={() => setNumero(qDigits)}
+              >
+                <span className="kpi-ico" style={{ width: 30, height: 30, background: "var(--wa-soft)", color: "var(--wa)" }}>
+                  <Icon name="send" size={14} />
+                </span>
+                <div className="col grow" style={{ gap: 0, minWidth: 0 }}>
+                  <span className="strong" style={{ fontSize: 13 }}>Usar número avulso</span>
+                  <span className="mono faint" style={{ fontSize: 11 }}>{qDigits}</span>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -232,7 +287,7 @@ function NovaConversaModal({
       </div>
       <div className="modal-foot">
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="wa" icon="send" aria-disabled={!contato || !tpl || !varsOk || sending} onClick={iniciar}>
+        <Button variant="wa" icon="send" aria-disabled={!destTel || !tpl || !varsOk || sending} onClick={iniciar}>
           {sending ? "Iniciando…" : "Iniciar conversa"}
         </Button>
       </div>
