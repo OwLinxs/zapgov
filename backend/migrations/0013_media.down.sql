@@ -1,0 +1,4 @@
+ALTER TABLE messages DROP COLUMN IF EXISTS media_name;
+ALTER TABLE messages DROP COLUMN IF EXISTS media_mime;
+ALTER TABLE messages DROP COLUMN IF EXISTS media_id;
+ALTER TABLE messages DROP COLUMN IF EXISTS media_type;

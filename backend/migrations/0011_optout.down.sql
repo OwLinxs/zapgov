@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS opt_outs;
+ALTER TABLE conversations DROP COLUMN IF EXISTS opt_out;

@@ -14,7 +14,6 @@ backend/.env
 node_modules/
 web/.next/
 web/out/
-*.sql
 *.sql.gz
 .DS_Store
 *.log

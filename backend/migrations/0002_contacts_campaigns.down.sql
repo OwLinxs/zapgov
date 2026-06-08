@@ -1,0 +1,3 @@
+ALTER TABLE messages DROP COLUMN IF EXISTS campaign_id;
+DROP TABLE IF EXISTS campaigns;
+DROP TABLE IF EXISTS contacts;

@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS bot_options;
+DROP TABLE IF EXISTS bot_config;
+DROP TABLE IF EXISTS departments;
