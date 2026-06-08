@@ -508,7 +508,8 @@ export default function InboxPage() {
 
   const filtered = convs.filter(
     (c) =>
-      (filter === "" || c.status === filter) &&
+      // "Todas" mostra só as ativas; finalizadas ficam na aba Finalizados.
+      (filter === "" ? c.status !== "resolvido" : c.status === filter) &&
       (setorFiltro === "Todos" || c.setor === setorFiltro) &&
       (atendenteFiltro === "Todos" || c.atendente === atendenteFiltro) &&
       (!q || nomeOuFone(c).toLowerCase().includes(q.toLowerCase()) || c.contact_phone.includes(q)),
@@ -581,6 +582,7 @@ export default function InboxPage() {
                 ...(canTodas ? [{ value: "", label: "Todas" }] : []),
                 { value: "aguardando", label: "Fila" },
                 { value: "em_atendimento", label: "Atendendo" },
+                { value: "resolvido", label: "Finalizados" },
               ]}
             />
             {atendentes.length > 0 && (
