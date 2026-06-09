@@ -23,6 +23,12 @@ func CanonPhone(s string) string {
 		}
 	}
 	d := b.String()
+	// BR celular sem DDI (DDD + 9...): prefixa 55, p/ casar com o wa_id da resposta
+	// (que vem com 55). Sem isso, envio e resposta viram 2 conversas.
+	// Restrito ao padrão de celular BR p/ não afetar números internacionais.
+	if !strings.HasPrefix(d, "55") && ((len(d) == 11 && d[2] == '9') || (len(d) == 10 && d[2] >= '6' && d[2] <= '9')) {
+		d = "55" + d
+	}
 	if strings.HasPrefix(d, "55") {
 		rest := d[2:]
 		if len(rest) == 10 {

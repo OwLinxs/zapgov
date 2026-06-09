@@ -468,6 +468,12 @@ func (p *Provider) VerifySignature(body []byte, signatureHeader string) bool {
 func normalizePhone(s string) string {
 	d := digitsOnly(s)
 
+	// BR celular sem DDI (DDD + 9...): prefixa 55 (mesma regra do CanonPhone).
+	// Restrito ao padrão de celular BR p/ não afetar números internacionais.
+	if !strings.HasPrefix(d, "55") && ((len(d) == 11 && d[2] == '9') || (len(d) == 10 && d[2] >= '6' && d[2] <= '9')) {
+		d = "55" + d
+	}
+
 	// Brasil: 55 + DDD(2) + assinante. Celular = assinante de 9 dígitos iniciando em 9.
 	// Quando vem com 8 dígitos (total 12), falta o nono dígito → reinsere.
 	if strings.HasPrefix(d, "55") {
