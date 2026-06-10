@@ -203,6 +203,26 @@ func main() {
 	defer queueClient.Close()
 	campaignSvc := campaigns.NewService(campaigns.NewRepository(pool), queueClient, templatesClient)
 	campaignSvc.SemWhatsApp = contactsRepo.SemWhatsApp // pula números sem WhatsApp
+	// Lembrete de véspera (personalizado): delega pro mesmo motor do envio
+	// individual. Closure pois msgHandler.OnDateInTemplate é definido mais abaixo.
+	campaignSvc.OnDateInTemplate = func(ctx context.Context, phone, nome string, data time.Time) {
+		if msgHandler.OnDateInTemplate != nil {
+			msgHandler.OnDateInTemplate(ctx, phone, nome, data)
+		}
+	}
+
+	// Agendador de disparos: a cada minuto despacha campanhas agendadas vencidas.
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for range t.C {
+			if n, err := campaignSvc.DispatchDue(context.Background(), 10); err != nil {
+				slog.Error("disparo agendado: erro", "err", err)
+			} else if n > 0 {
+				slog.Info("disparos agendados despachados", "n", n)
+			}
+		}
+	}()
 	campaigns.NewHandler(campaignSvc).Register(api, opsOnly)
 
 	departments.NewHandler(departments.NewRepository(pool)).Register(api, adminOnly)

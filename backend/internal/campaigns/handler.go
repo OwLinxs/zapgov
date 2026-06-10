@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -21,7 +22,20 @@ func (h *Handler) Register(r fiber.Router, ops fiber.Handler) {
 	r.Get("/campaigns", h.list)
 	r.Get("/campaigns/export.csv", h.exportCSV)
 	r.Post("/campaigns", ops, h.create)
+	r.Post("/campaigns/:id/cancel", ops, h.cancel)
 	r.Get("/campaigns/:id", h.get)
+}
+
+// cancel cancela uma campanha agendada.
+func (h *Handler) cancel(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if err := h.svc.Cancel(c.Context(), int64(id)); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // exportCSV devolve o histórico de disparos (com os mesmos filtros do list)
@@ -91,13 +105,15 @@ func (h *Handler) get(c *fiber.Ctx) error {
 }
 
 type createReq struct {
-	Template string   `json:"template"`
-	Language string   `json:"language"`
-	Params   []string `json:"params"`
-	Setor    string   `json:"setor"`
-	Operador string   `json:"operador"`
-	Preview  string   `json:"preview"`
-	Phones   []string `json:"phones"`
+	Template    string      `json:"template"`
+	Language    string      `json:"language"`
+	Params      []string    `json:"params"`
+	Setor       string      `json:"setor"`
+	Operador    string      `json:"operador"`
+	Body        string      `json:"body"` // corpo cru do template (preview por destinatário)
+	Phones      []string    `json:"phones"`
+	Recipients  []Recipient `json:"recipients"`   // modo personalizado
+	ScheduledAt string      `json:"scheduled_at"` // RFC3339; vazio = agora
 }
 
 func (h *Handler) create(c *fiber.Ctx) error {
@@ -105,14 +121,24 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
 	}
+	var schedAt *time.Time
+	if req.ScheduledAt != "" {
+		t, err := time.Parse(time.RFC3339, req.ScheduledAt)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scheduled_at inválido (use RFC3339)"})
+		}
+		schedAt = &t
+	}
 	camp, err := h.svc.Create(c.Context(), CreateInput{
-		Template: req.Template,
-		Language: req.Language,
-		Params:   req.Params,
-		Setor:    req.Setor,
-		Operador: req.Operador,
-		Preview:  req.Preview,
-		Phones:   req.Phones,
+		Template:    req.Template,
+		Language:    req.Language,
+		Params:      req.Params,
+		Setor:       req.Setor,
+		Operador:    req.Operador,
+		Body:        req.Body,
+		Phones:      req.Phones,
+		Recipients:  req.Recipients,
+		ScheduledAt: schedAt,
 	})
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
