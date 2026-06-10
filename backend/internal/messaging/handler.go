@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -31,6 +33,28 @@ type Handler struct {
 	// EnsureContact, se definido, garante o telefone no cadastro de contatos
 	// (auto-cadastro ao iniciar conversa com número avulso).
 	EnsureContact func(ctx context.Context, nome, telefone string)
+	// OnDateInTemplate, se definido, é chamado quando uma variável do template
+	// enviado contém uma data futura (DD/MM/AAAA) — agenda lembrete da véspera.
+	OnDateInTemplate func(ctx context.Context, phone, nome string, data time.Time)
+}
+
+// dataBR reconhece DD/MM/AAAA dentro de um texto.
+var dataBR = regexp.MustCompile(`\b(\d{2})/(\d{2})/(\d{4})\b`)
+
+// acharData devolve a primeira data futura encontrada nas variáveis.
+func acharData(params []string) (time.Time, bool) {
+	for _, p := range params {
+		m := dataBR.FindStringSubmatch(p)
+		if m == nil {
+			continue
+		}
+		t, err := time.Parse("02/01/2006", m[0])
+		if err != nil {
+			continue
+		}
+		return t, true
+	}
+	return time.Time{}, false
 }
 
 func (h *Handler) routeBySetor(c *fiber.Ctx) bool {
@@ -219,6 +243,12 @@ func (h *Handler) sendTemplate(c *fiber.Ctx) error {
 	_ = h.svc.SetContactNameIfEmpty(c.Context(), msg.ConversationID, req.Nome)
 	if h.EnsureContact != nil {
 		h.EnsureContact(c.Context(), req.Nome, CanonPhone(req.To))
+	}
+	// Lembrete automático: variável com data futura (DD/MM/AAAA) agenda a véspera.
+	if h.OnDateInTemplate != nil {
+		if data, ok := acharData(req.Params); ok {
+			h.OnDateInTemplate(c.Context(), CanonPhone(req.To), req.Nome, data)
+		}
 	}
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }

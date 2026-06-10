@@ -11,12 +11,14 @@ import {
   getAssinatura, saveAssinatura,
   getRoteamento, saveRoteamento,
   getChatbotAtivo, saveChatbotAtivo,
+  getLembrete, saveLembrete, listReminders, cancelReminder, listTemplates,
   listWebhooks, createWebhook, deleteWebhook,
   listUsers, createUser, updateUser, resetUserPassword,
   listDepartments,
   listQuickReplies, createQuickReply, deleteQuickReply,
   type SettingsOrg, type SettingsMeta, type SettingsBilling, type SettingsWebhook,
-  type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type ApiUser, type Papel, type ApiDepartment, type ApiQuickReply,
+  type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type SettingsLembrete,
+  type ApiUser, type Papel, type ApiDepartment, type ApiQuickReply, type ApiReminder, type ApiTemplate,
 } from "@/lib/api";
 
 const SECS: { id: string; label: string; icon: IconName }[] = [
@@ -245,6 +247,9 @@ function AtendimentoSection() {
   const [assinatura, setAssinatura] = useState(false);
   const [rot, setRot] = useState<SettingsRoteamento>({ por_setor: false, por_etiqueta: false });
   const [chatbot, setChatbot] = useState(true);
+  const [lem, setLem] = useState<SettingsLembrete>({ ativo: false, template: "", idioma: "pt_BR", hora: "09:00", fuso: "" });
+  const [lemList, setLemList] = useState<ApiReminder[]>([]);
+  const [tpls, setTpls] = useState<ApiTemplate[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -253,7 +258,17 @@ function AtendimentoSection() {
     getAssinatura().then((a) => setAssinatura(a.ativo)).catch(() => {});
     getRoteamento().then(setRot).catch(() => {});
     getChatbotAtivo().then((c) => setChatbot(c.ativo)).catch(() => {});
+    getLembrete().then(setLem).catch(() => {});
+    listReminders().then(setLemList).catch(() => {});
+    listTemplates().then((ts) => setTpls(ts.filter((t) => t.status === "aprovado"))).catch(() => {});
   }, []);
+
+  async function cancelarLembrete(id: number) {
+    try {
+      await cancelReminder(id);
+      setLemList((ls) => ls.filter((x) => x.id !== id));
+    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+  }
 
   if (!enc || !aus) return <Skel h={320} />;
 
@@ -270,6 +285,7 @@ function AtendimentoSection() {
         saveAssinatura(assinatura),
         saveRoteamento(rot),
         saveChatbotAtivo(chatbot),
+        saveLembrete({ ativo: lem.ativo, template: lem.template, idioma: lem.idioma, hora: lem.hora }),
       ]);
       toast({ type: "success", title: "Alterações salvas" });
     } catch (e) {
@@ -513,6 +529,66 @@ function AtendimentoSection() {
             style={{ resize: "vertical", lineHeight: 1.5, opacity: aus.horario_ativo ? 1 : 0.55 }}
           />
         </Field>
+      </div>
+
+      {/* Lembrete automático de consulta */}
+      <div className="card card-pad col" style={{ gap: 16, marginTop: 16 }}>
+        <label className="row center" style={{ gap: 10, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={lem.ativo}
+            onChange={(e) => setLem({ ...lem, ativo: e.target.checked })}
+            style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
+          />
+          <div className="col" style={{ gap: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Lembrete automático de consulta</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Quando um template enviado tiver uma <b>data futura</b> (DD/MM/AAAA) numa variável,
+              agenda um lembrete pro <b>dia anterior</b>, no horário abaixo. Fuso: {lem.fuso || "America/Sao_Paulo"}.
+            </div>
+          </div>
+        </label>
+
+        <div className="row" style={{ gap: 14 }}>
+          <Field label="Template do lembrete" hint="Aprovado. Variáveis: {{1}} = nome, {{2}} = data.">
+            <select
+              className="select"
+              value={lem.template}
+              disabled={!lem.ativo}
+              onChange={(e) => {
+                const t = tpls.find((x) => x.name === e.target.value);
+                setLem({ ...lem, template: e.target.value, idioma: t?.language || "pt_BR" });
+              }}
+            >
+              <option value="">— escolher —</option>
+              {tpls.map((t) => <option key={t.name + t.language} value={t.name}>{t.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Hora do envio">
+            <Input type="time" value={lem.hora} disabled={!lem.ativo} onChange={(e) => setLem({ ...lem, hora: e.target.value })} />
+          </Field>
+        </div>
+
+        {lemList.length > 0 && (
+          <div className="col" style={{ gap: 6 }}>
+            <span className="field-label">Lembretes agendados ({lemList.length})</span>
+            <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--border-subtle)", borderRadius: 9 }}>
+              {lemList.map((r) => (
+                <div key={r.id} className="row center between" style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)", fontSize: 12.5 }}>
+                  <div className="col" style={{ gap: 0 }}>
+                    <span className="strong">{r.nome || r.phone}</span>
+                    <span className="faint" style={{ fontSize: 11 }}>
+                      consulta {new Date(r.data_evento).toLocaleDateString("pt-BR")} · lembrete {new Date(r.enviar_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <button className="btn btn-ghost btn-icon btn-sm" title="Cancelar lembrete" onClick={() => cancelarLembrete(r.id)}>
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="row" style={{ justifyContent: "flex-end", gap: 9, marginTop: 14 }}>

@@ -541,6 +541,29 @@ export const saveRoteamento = (r: SettingsRoteamento) => post("/settings/roteame
 
 export const getChatbotAtivo = () => get<{ ativo: boolean }>("/settings/chatbot");
 export const saveChatbotAtivo = (ativo: boolean) => post("/settings/chatbot", { ativo }, "PUT");
+
+// ---- Lembretes automáticos (véspera de consulta) ----
+export interface SettingsLembrete {
+  ativo: boolean;
+  template: string;
+  idioma: string;
+  hora: string; // "HH:MM"
+  fuso: string; // leitura
+}
+export const getLembrete = () => get<SettingsLembrete>("/settings/lembrete");
+export const saveLembrete = (l: Omit<SettingsLembrete, "fuso">) => post("/settings/lembrete", l, "PUT");
+
+export interface ApiReminder {
+  id: number;
+  phone: string;
+  nome: string;
+  data_evento: string;
+  enviar_em: string;
+  status: string;
+}
+export const listReminders = async () =>
+  (await get<{ reminders: ApiReminder[] }>("/reminders")).reminders ?? [];
+export const cancelReminder = (id: number) => del(`/reminders/${id}`);
 export const getMeta = () => get<SettingsMeta>("/settings/meta");
 export const getBilling = () => get<SettingsBilling>("/settings/billing");
 export const getApiKey = () => get<{ api_key: string }>("/settings/apikey");

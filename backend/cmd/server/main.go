@@ -30,6 +30,7 @@ import (
 	"zapgov/backend/internal/queue"
 	"zapgov/backend/internal/quickreplies"
 	"zapgov/backend/internal/realtime"
+	"zapgov/backend/internal/reminders"
 	"zapgov/backend/internal/settings"
 	"zapgov/backend/internal/templates"
 	"zapgov/backend/internal/tenantctx"
@@ -175,6 +176,10 @@ func main() {
 	svc.OnUndeliverable = func(ctx context.Context, phone string) {
 		_ = contactsRepo.MarkSemWhatsApp(ctx, phone)
 	}
+
+	// Lembretes automáticos: data futura nas variáveis do template agenda a véspera.
+	remindersRepo := reminders.NewRepository(pool)
+	reminders.NewHandler(remindersRepo).Register(api)
 	metrics.NewHandler(metrics.NewRepository(pool)).Register(api)
 
 	templatesClient := templates.NewClient(cfg.WhatsAppWABAID, cfg.WhatsAppToken, cfg.WhatsAppAPIVersion)
@@ -232,6 +237,59 @@ func main() {
 		}
 		return on
 	}
+
+	// Agenda o lembrete: véspera da data detectada, na hora configurada (fuso da org).
+	msgHandler.OnDateInTemplate = func(ctx context.Context, phone, nome string, data time.Time) {
+		l, err := settingsRepo.GetLembrete(ctx)
+		if err != nil || !l.Ativo || l.Template == "" {
+			return
+		}
+		loc, e := time.LoadLocation(l.Fuso)
+		if e != nil || loc == nil {
+			loc = time.UTC
+		}
+		hh, mm := 9, 0
+		if t, err := time.Parse("15:04", l.Hora); err == nil {
+			hh, mm = t.Hour(), t.Minute()
+		}
+		vespera := time.Date(data.Year(), data.Month(), data.Day(), hh, mm, 0, 0, loc).AddDate(0, 0, -1)
+		now := time.Now().In(loc)
+		if !data.After(now) {
+			return // evento já passou/é hoje: sem lembrete
+		}
+		if vespera.Before(now) {
+			vespera = now.Add(2 * time.Minute) // véspera já passou (evento amanhã): manda já
+		}
+		_ = remindersRepo.Create(ctx, phone, nome, data, vespera)
+	}
+
+	// Agendador: a cada minuto envia os lembretes vencidos (template da config).
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for range t.C {
+			due, err := remindersRepo.Due(context.Background(), 50)
+			if err != nil {
+				continue
+			}
+			for _, rm := range due {
+				ctx := tenantctx.With(context.Background(), rm.TenantID)
+				l, err := settingsRepo.GetLembrete(ctx)
+				if err != nil || !l.Ativo || l.Template == "" {
+					_ = remindersRepo.MarkStatus(ctx, rm.ID, "cancelado")
+					continue
+				}
+				params := []string{firstName(rm.Nome), rm.DataEvento.Format("02/01/2006")}
+				preview := "[lembrete automático: " + l.Template + " — " + rm.DataEvento.Format("02/01/2006") + "]"
+				if _, err := svc.SendTemplate(ctx, rm.Phone, l.Template, l.Idioma, params, preview); err != nil {
+					slog.Error("lembrete: envio falhou", "id", rm.ID, "err", err)
+					_ = remindersRepo.MarkStatus(ctx, rm.ID, "falhou")
+					continue
+				}
+				_ = remindersRepo.MarkStatus(ctx, rm.ID, "enviado")
+			}
+		}
+	}()
 	// Auto-etiqueta: ao assumir, aplica uma etiqueta com o nome do atendente.
 	msgHandler.TagAttendant = func(ctx context.Context, convID int64, nome string) {
 		if nome == "" {

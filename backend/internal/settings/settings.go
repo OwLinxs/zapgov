@@ -107,6 +107,41 @@ func (r *Repository) SetRoteamento(ctx context.Context, rt Roteamento) error {
 	return err
 }
 
+// Lembrete: agendamento automático de lembrete na véspera (data detectada nas
+// variáveis do template enviado).
+type Lembrete struct {
+	Ativo    bool   `json:"ativo"`
+	Template string `json:"template"` // template aprovado usado no lembrete
+	Idioma   string `json:"idioma"`
+	Hora     string `json:"hora"` // "HH:MM" no fuso da org
+	Fuso     string `json:"fuso"` // leitura
+}
+
+func (r *Repository) GetLembrete(ctx context.Context) (Lembrete, error) {
+	tid := tenantctx.From(ctx)
+	r.ensure(ctx, tid)
+	var l Lembrete
+	err := r.pool.QueryRow(ctx, `
+		SELECT lembrete_ativo, lembrete_template, lembrete_idioma, lembrete_hora, fuso
+		FROM org_settings WHERE tenant_id = $1`, tid).
+		Scan(&l.Ativo, &l.Template, &l.Idioma, &l.Hora, &l.Fuso)
+	return l, err
+}
+
+func (r *Repository) SetLembrete(ctx context.Context, l Lembrete) error {
+	if l.Idioma == "" {
+		l.Idioma = "pt_BR"
+	}
+	if l.Hora == "" {
+		l.Hora = "09:00"
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE org_settings SET lembrete_ativo = $1, lembrete_template = $2, lembrete_idioma = $3, lembrete_hora = $4
+		WHERE tenant_id = $5`,
+		l.Ativo, l.Template, l.Idioma, l.Hora, tenantctx.From(ctx))
+	return err
+}
+
 // GetChatbot diz se o chatbot está ativo. Desligado: inbound vai direto pra fila.
 func (r *Repository) GetChatbot(ctx context.Context) (bool, error) {
 	tid := tenantctx.From(ctx)
