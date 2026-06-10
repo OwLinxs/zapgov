@@ -665,7 +665,13 @@ export default function InboxPage() {
               <div
                 key={c.id}
                 className={"conv-item" + (c.id === activeId ? " active" : "")}
-                onClick={() => setActiveId(c.id)}
+                onClick={() => {
+                  setActiveId(c.id);
+                  // Zera o contador na hora (otimista); o backend marca como lida ao carregar.
+                  if (c.unread_count > 0) {
+                    setConvs((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread_count: 0 } : x)));
+                  }
+                }}
               >
                 <Avatar name={nomeOuFone(c)} size={42} />
                 <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
