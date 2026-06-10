@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -246,7 +247,7 @@ func main() {
 	// da org) e devolve a mensagem configurada.
 	svc.AbsenceMessage = func(ctx context.Context) (string, bool) {
 		a, err := settingsRepo.GetAusencia(ctx)
-		if err != nil || !a.Ativo {
+		if err != nil || (!a.Ativo && !a.HorarioAtivo) {
 			return "", false
 		}
 		loc, e := time.LoadLocation(a.Fuso)
@@ -254,17 +255,30 @@ func main() {
 			loc = time.UTC
 		}
 		now := time.Now().In(loc)
-		md, ymd := now.Format("01-02"), now.Format("2006-01-02")
-		for _, f := range a.Feriados {
-			if f == md || f == ymd {
-				if a.Feriado != "" {
+
+		// Feriado / fim de semana (toggle de ausência).
+		if a.Ativo {
+			md, ymd := now.Format("01-02"), now.Format("2006-01-02")
+			for _, f := range a.Feriados {
+				if (f == md || f == ymd) && a.Feriado != "" {
 					return a.Feriado, true
 				}
 			}
+			if wd := now.Weekday(); wd == time.Saturday || wd == time.Sunday {
+				if a.FimSemana != "" {
+					return a.FimSemana, true
+				}
+			}
 		}
-		if wd := now.Weekday(); wd == time.Saturday || wd == time.Sunday {
-			if a.FimSemana != "" {
-				return a.FimSemana, true
+
+		// Horário comercial: fora do expediente em dia útil configurado.
+		if a.HorarioAtivo && a.HorarioMsg != "" {
+			wd := strconv.Itoa(int(now.Weekday()))
+			if strings.Contains(","+a.HorarioDias+",", ","+wd+",") {
+				cur := now.Format("15:04")
+				if cur < a.HorarioInicio || cur >= a.HorarioFim {
+					return a.HorarioMsg, true
+				}
 			}
 		}
 		return "", false

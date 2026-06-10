@@ -133,13 +133,19 @@ func (r *Repository) SetAssinatura(ctx context.Context, on bool) error {
 	return err
 }
 
-// Ausencia: auto-resposta de fim de semana / feriado.
+// Ausencia: auto-resposta de fim de semana / feriado / fora de horário.
 type Ausencia struct {
 	Ativo     bool     `json:"ativo"`
 	FimSemana string   `json:"fim_semana"`
 	Feriado   string   `json:"feriado"`
 	Feriados  []string `json:"feriados"` // 'YYYY-MM-DD' ou 'MM-DD' (recorrente)
 	Fuso      string   `json:"fuso"`     // somente leitura (vem da config da org)
+	// Horário comercial (auto-resposta fora do expediente em dia útil).
+	HorarioAtivo  bool   `json:"horario_ativo"`
+	HorarioInicio string `json:"horario_inicio"` // "HH:MM"
+	HorarioFim    string `json:"horario_fim"`    // "HH:MM"
+	HorarioDias   string `json:"horario_dias"`   // "1,2,3,4,5" (0=Dom..6=Sáb)
+	HorarioMsg    string `json:"horario_msg"`
 }
 
 func (r *Repository) GetAusencia(ctx context.Context) (Ausencia, error) {
@@ -147,9 +153,11 @@ func (r *Repository) GetAusencia(ctx context.Context) (Ausencia, error) {
 	r.ensure(ctx, tid)
 	var a Ausencia
 	err := r.pool.QueryRow(ctx, `
-		SELECT ausencia_ativo, ausencia_fim_semana, ausencia_feriado, ausencia_feriados, fuso
+		SELECT ausencia_ativo, ausencia_fim_semana, ausencia_feriado, ausencia_feriados, fuso,
+		       horario_ativo, horario_inicio, horario_fim, horario_dias, horario_msg
 		FROM org_settings WHERE tenant_id = $1`, tid).
-		Scan(&a.Ativo, &a.FimSemana, &a.Feriado, &a.Feriados, &a.Fuso)
+		Scan(&a.Ativo, &a.FimSemana, &a.Feriado, &a.Feriados, &a.Fuso,
+			&a.HorarioAtivo, &a.HorarioInicio, &a.HorarioFim, &a.HorarioDias, &a.HorarioMsg)
 	if a.Feriados == nil {
 		a.Feriados = []string{}
 	}
@@ -161,9 +169,11 @@ func (r *Repository) SetAusencia(ctx context.Context, a Ausencia) error {
 		a.Feriados = []string{}
 	}
 	_, err := r.pool.Exec(ctx, `
-		UPDATE org_settings SET ausencia_ativo = $1, ausencia_fim_semana = $2, ausencia_feriado = $3, ausencia_feriados = $4
+		UPDATE org_settings SET ausencia_ativo = $1, ausencia_fim_semana = $2, ausencia_feriado = $3, ausencia_feriados = $4,
+			horario_ativo = $6, horario_inicio = $7, horario_fim = $8, horario_dias = $9, horario_msg = $10
 		WHERE tenant_id = $5`,
-		a.Ativo, a.FimSemana, a.Feriado, a.Feriados, tenantctx.From(ctx))
+		a.Ativo, a.FimSemana, a.Feriado, a.Feriados, tenantctx.From(ctx),
+		a.HorarioAtivo, a.HorarioInicio, a.HorarioFim, a.HorarioDias, a.HorarioMsg)
 	return err
 }
 

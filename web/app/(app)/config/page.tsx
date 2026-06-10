@@ -262,7 +262,11 @@ function AtendimentoSection() {
     try {
       await Promise.all([
         saveEncerramento(enc!),
-        saveAusencia({ ativo: aus!.ativo, fim_semana: aus!.fim_semana, feriado: aus!.feriado, feriados }),
+        saveAusencia({
+          ativo: aus!.ativo, fim_semana: aus!.fim_semana, feriado: aus!.feriado, feriados,
+          horario_ativo: aus!.horario_ativo, horario_inicio: aus!.horario_inicio, horario_fim: aus!.horario_fim,
+          horario_dias: aus!.horario_dias, horario_msg: aus!.horario_msg,
+        }),
         saveAssinatura(assinatura),
         saveRoteamento(rot),
         saveChatbotAtivo(chatbot),
@@ -446,6 +450,68 @@ function AtendimentoSection() {
 
         <Field label="Feriados" hint="Clique nos dias para marcar. Verde = feriado. Datas marcadas aparecem abaixo.">
           <FeriadosCalendar value={feriados} onChange={setFeriados} disabled={!aus.ativo} />
+        </Field>
+      </div>
+
+      {/* Horário comercial */}
+      <div className="card card-pad col" style={{ gap: 16, marginTop: 16 }}>
+        <label className="row center" style={{ gap: 10, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={aus.horario_ativo}
+            onChange={(e) => setAus({ ...aus, horario_ativo: e.target.checked })}
+            style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
+          />
+          <div className="col" style={{ gap: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Horário comercial</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Fora do expediente (em dia útil), responde automaticamente. Fuso: {aus.fuso || "America/Sao_Paulo"}.
+            </div>
+          </div>
+        </label>
+
+        <div className="row" style={{ gap: 14 }}>
+          <Field label="Abre às">
+            <Input type="time" value={aus.horario_inicio} disabled={!aus.horario_ativo} onChange={(e) => setAus({ ...aus, horario_inicio: e.target.value })} />
+          </Field>
+          <Field label="Fecha às">
+            <Input type="time" value={aus.horario_fim} disabled={!aus.horario_ativo} onChange={(e) => setAus({ ...aus, horario_fim: e.target.value })} />
+          </Field>
+        </div>
+
+        <Field label="Dias de atendimento">
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {[["1", "Seg"], ["2", "Ter"], ["3", "Qua"], ["4", "Qui"], ["5", "Sex"], ["6", "Sáb"], ["0", "Dom"]].map(([num, lbl]) => {
+              const dias = aus.horario_dias ? aus.horario_dias.split(",").filter(Boolean) : [];
+              const on = dias.includes(num);
+              return (
+                <button
+                  key={num}
+                  type="button"
+                  disabled={!aus.horario_ativo}
+                  onClick={() => {
+                    const next = on ? dias.filter((d) => d !== num) : [...dias, num];
+                    setAus({ ...aus, horario_dias: next.join(",") });
+                  }}
+                  className="btn btn-sm"
+                  style={{ background: on ? "var(--brand)" : "var(--bg-sunken)", color: on ? "#fff" : "var(--text-secondary)", opacity: aus.horario_ativo ? 1 : 0.55 }}
+                >
+                  {lbl}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        <Field label="Mensagem fora do horário">
+          <textarea
+            className="input"
+            rows={3}
+            value={aus.horario_msg}
+            disabled={!aus.horario_ativo}
+            onChange={(e) => setAus({ ...aus, horario_msg: e.target.value })}
+            style={{ resize: "vertical", lineHeight: 1.5, opacity: aus.horario_ativo ? 1 : 0.55 }}
+          />
         </Field>
       </div>
 

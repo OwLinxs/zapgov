@@ -506,9 +506,14 @@ export interface SettingsAusencia {
   feriado: string;
   feriados: string[];
   fuso: string; // leitura (fuso da org)
+  horario_ativo: boolean;
+  horario_inicio: string; // "HH:MM"
+  horario_fim: string;
+  horario_dias: string; // "1,2,3,4,5" (0=Dom..6=Sáb)
+  horario_msg: string;
 }
 export const getAusencia = () => get<SettingsAusencia>("/settings/ausencia");
-export const saveAusencia = (a: { ativo: boolean; fim_semana: string; feriado: string; feriados: string[] }) =>
+export const saveAusencia = (a: Omit<SettingsAusencia, "fuso">) =>
   post("/settings/ausencia", a, "PUT");
 
 export const getAssinatura = () => get<{ ativo: boolean }>("/settings/assinatura");
