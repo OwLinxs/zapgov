@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"zapgov/backend/internal/tenantctx"
@@ -71,6 +72,15 @@ func (r *Repository) adminSetPassword(ctx context.Context, id int64, hash string
 	return err
 }
 
+// ErrEmailExists: já há um usuário com esse e-mail no tenant.
+var ErrEmailExists = errors.New("e-mail já cadastrado")
+
+// isUniqueViolation detecta violação de UNIQUE (e-mail duplicado) do Postgres.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
 // Create insere o usuário já com troca de senha obrigatória no 1º acesso
 // (senha inicial é provisória — admin define, usuário troca ao entrar).
 // O tenant é explícito (seed/provisionamento) ou vem do ctx (admin logado).
@@ -82,6 +92,9 @@ func (r *Repository) Create(ctx context.Context, tenantID int64, nome, email, ha
 		RETURNING id, tenant_id, nome, email, papel, setor, ativo, must_change_password, criado_em`,
 		tenantID, nome, email, hash, papel, setor).
 		Scan(&u.ID, &u.TenantID, &u.Nome, &u.Email, &u.Papel, &u.Setor, &u.Ativo, &u.MustChange, &u.CriadoEm)
+	if isUniqueViolation(err) {
+		return nil, ErrEmailExists
+	}
 	return &u, err
 }
 
@@ -102,6 +115,9 @@ func (r *Repository) Update(ctx context.Context, id int64, nome, email, papel, s
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users SET nome = $2, email = lower($3), papel = $4, setor = $5, ativo = $6 WHERE id = $1 AND tenant_id = $7`,
 		id, nome, email, papel, setor, ativo, tenantctx.From(ctx))
+	if isUniqueViolation(err) {
+		return ErrEmailExists
+	}
 	return err
 }
 

@@ -491,6 +491,7 @@ function UsuariosSection() {
   const [loading, setLoading] = useState(true);
   const [novo, setNovo] = useState(false);
   const [editar, setEditar] = useState<ApiUser | null>(null);
+  const [resetada, setResetada] = useState<{ nome: string; senha: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -508,6 +509,17 @@ function UsuariosSection() {
   }
   async function toggleAtivo(u: ApiUser) {
     try { await updateUser(u.id, { nome: u.nome, email: u.email, papel: u.papel, setor: u.setor, ativo: !u.ativo }); load(); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+  }
+  async function resetarSenha(u: ApiUser) {
+    // Gera uma senha provisória legível (8 caracteres).
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz";
+    const senha = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    try {
+      await resetUserPassword(u.id, senha);
+      setResetada({ nome: u.nome, senha });
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+    }
   }
 
   return (
@@ -544,6 +556,9 @@ function UsuariosSection() {
                       <div className="dropdown-item" onClick={() => setEditar(u)}>
                         <Icon name="edit" size={15} /> Editar dados
                       </div>
+                      <div className="dropdown-item" onClick={() => resetarSenha(u)}>
+                        <Icon name="key" size={15} /> Resetar senha
+                      </div>
                       <div className="dropdown-sep" />
                       <div className="dropdown-label">Alterar papel</div>
                       {(["admin", "supervisor", "atendente"] as Papel[]).map((p) => (
@@ -565,6 +580,30 @@ function UsuariosSection() {
       </div>
       <NovoUsuarioModal open={novo} deps={deps} onClose={() => setNovo(false)} onCreated={load} />
       <EditarUsuarioModal user={editar} deps={deps} onClose={() => setEditar(null)} onSaved={load} />
+
+      <Modal open={!!resetada} onClose={() => setResetada(null)} width={420}>
+        <div className="modal-head">
+          <div className="modal-title">Senha redefinida</div>
+          <div className="modal-sub">{resetada?.nome} — troca obrigatória no próximo login.</div>
+        </div>
+        <div className="modal-body col" style={{ gap: 12 }}>
+          <div className="muted" style={{ fontSize: 12.5 }}>Repasse esta senha provisória ao usuário:</div>
+          <div className="row center between" style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg-sunken)", border: "1px solid var(--border)" }}>
+            <span className="mono" style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>{resetada?.senha}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="copy"
+              onClick={() => { if (resetada) { navigator.clipboard?.writeText(resetada.senha); toast({ type: "success", title: "Copiado" }); } }}
+            >
+              Copiar
+            </Button>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <Button variant="primary" className="btn-block" onClick={() => setResetada(null)}>Entendi</Button>
+        </div>
+      </Modal>
     </div>
   );
 }

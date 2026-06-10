@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -167,6 +168,9 @@ func (h *Handler) updateUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "nome e e-mail são obrigatórios"})
 	}
 	if err := h.repo.Update(c.Context(), int64(id), body.Nome, body.Email, body.Papel, body.Setor, body.Ativo); err != nil {
+		if errors.Is(err, ErrEmailExists) {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"ok": true})
