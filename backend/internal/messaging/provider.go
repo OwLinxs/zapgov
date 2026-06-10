@@ -64,6 +64,14 @@ type StatusUpdate struct {
 	Timestamp   time.Time
 }
 
+// ReactionUpdate é uma reação (emoji) do cidadão a uma mensagem nossa.
+// Emoji vazio = reação removida.
+type ReactionUpdate struct {
+	TargetWAMessageID string
+	Emoji             string
+	From              string
+}
+
 // MessageProvider abstrai o canal de envio/recebimento.
 // A implementação WhatsApp vive em internal/messaging/whatsapp/.
 // Manter a interface pequena permite plugar SMS/Email depois.
@@ -72,8 +80,9 @@ type MessageProvider interface {
 	SendTemplate(ctx context.Context, msg TemplateMessage) (SendResult, error)
 	SendMenu(ctx context.Context, to, text string, options []MenuOption) (SendResult, error)
 	SendMedia(ctx context.Context, msg OutgoingMedia) (SendResult, error)
+	SendReaction(ctx context.Context, to, targetWAMessageID, emoji string) error
 	UploadMedia(ctx context.Context, data []byte, filename, mime string) (mediaID string, err error)
 	DownloadMedia(ctx context.Context, mediaID string) (data []byte, mime string, err error)
-	ParseWebhook(body []byte) ([]IncomingMessage, []StatusUpdate, error)
+	ParseWebhook(body []byte) ([]IncomingMessage, []StatusUpdate, []ReactionUpdate, error)
 	VerifySignature(body []byte, signatureHeader string) bool
 }

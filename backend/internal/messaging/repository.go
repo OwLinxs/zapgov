@@ -55,16 +55,32 @@ type Message struct {
 	MediaID        string    `json:"media_id"`
 	MediaMime      string    `json:"media_mime"`
 	MediaName      string    `json:"media_name"`
-	Autor          string    `json:"autor"` // quem escreveu (notas internas)
+	Autor          string    `json:"autor"`    // quem escreveu (notas internas)
+	Reaction       string    `json:"reaction"` // emoji da reação (vazio = sem)
 }
 
-const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor`
+const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor, reaction`
 
 func scanMessage(row pgx.CollectableRow) (Message, error) {
 	var m Message
 	err := row.Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
 	return m, err
+}
+
+// SetReaction grava o emoji de reação numa mensagem (por wa_message_id) e
+// devolve a conversa afetada (0 se a mensagem não existe).
+func (r *Repository) SetReaction(ctx context.Context, waMessageID, emoji string) (int64, error) {
+	var convID int64
+	err := r.pool.QueryRow(ctx, `
+		UPDATE messages SET reaction = $2, updated_at = now()
+		WHERE wa_message_id = $1 AND tenant_id = $3
+		RETURNING conversation_id`,
+		waMessageID, emoji, tenantctx.From(ctx)).Scan(&convID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return convID, err
 }
 
 // AddNote grava uma nota interna na conversa (não vai pro cidadão).
@@ -81,7 +97,7 @@ func (r *Repository) AddNote(ctx context.Context, convID int64, autor, body stri
 		RETURNING `+msgCols,
 		convID, sid, waID, body, autor, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
 	return m, err
 }
 
@@ -160,7 +176,7 @@ func (r *Repository) InsertOutbound(ctx context.Context, convID int64, waMessage
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, body, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +196,7 @@ func (r *Repository) InsertOutboundMedia(ctx context.Context, convID int64, waMe
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, caption, kind, name, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
 	return m, err
 }
 

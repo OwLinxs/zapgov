@@ -270,6 +270,10 @@ type webhookEnvelope struct {
 							Title string `json:"title"`
 						} `json:"list_reply"`
 					} `json:"interactive"`
+					Reaction *struct {
+						MessageID string `json:"message_id"`
+						Emoji     string `json:"emoji"`
+					} `json:"reaction"`
 				} `json:"messages"`
 				Statuses []struct {
 					ID          string `json:"id"`
@@ -290,15 +294,16 @@ type mediaObj struct {
 	Filename string `json:"filename"`
 }
 
-// ParseWebhook separa mensagens recebidas e atualizações de status.
-func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []messaging.StatusUpdate, error) {
+// ParseWebhook separa mensagens recebidas, atualizações de status e reações.
+func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []messaging.StatusUpdate, []messaging.ReactionUpdate, error) {
 	var env webhookEnvelope
 	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, nil, fmt.Errorf("decode do webhook: %w", err)
+		return nil, nil, nil, fmt.Errorf("decode do webhook: %w", err)
 	}
 
 	var incoming []messaging.IncomingMessage
 	var statuses []messaging.StatusUpdate
+	var reactions []messaging.ReactionUpdate
 
 	for _, entry := range env.Entry {
 		for _, change := range entry.Changes {
@@ -353,6 +358,16 @@ func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []mes
 					if im.Body == "" {
 						continue
 					}
+				case "reaction":
+					// reação não vira mensagem — atualiza a mensagem alvo.
+					if m.Reaction != nil {
+						reactions = append(reactions, messaging.ReactionUpdate{
+							TargetWAMessageID: m.Reaction.MessageID,
+							Emoji:             m.Reaction.Emoji,
+							From:              m.From,
+						})
+					}
+					continue
 				default:
 					continue // tipos não suportados (location, contacts…)
 				}
@@ -368,7 +383,7 @@ func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []mes
 			}
 		}
 	}
-	return incoming, statuses, nil
+	return incoming, statuses, reactions, nil
 }
 
 func fillMedia(im *messaging.IncomingMessage, kind string, mo *mediaObj) {
@@ -385,6 +400,22 @@ func fillMedia(im *messaging.IncomingMessage, kind string, mo *mediaObj) {
 // ---------- Envio de mídia por link ----------
 
 // SendMedia envia imagem/documento/áudio/vídeo a partir de uma URL pública.
+// SendReaction reage com emoji a uma mensagem (emoji vazio remove a reação).
+func (p *Provider) SendReaction(ctx context.Context, to, targetWAMessageID, emoji string) error {
+	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/messages", p.apiVersion, p.phoneNumberID)
+	payload := map[string]any{
+		"messaging_product": "whatsapp",
+		"to":                normalizePhone(to),
+		"type":              "reaction",
+		"reaction": map[string]any{
+			"message_id": targetWAMessageID,
+			"emoji":      emoji,
+		},
+	}
+	_, err := p.postMessage(ctx, url, payload)
+	return err
+}
+
 // UploadMedia sobe um arquivo pra Meta e devolve o media_id (válido p/ envio).
 func (p *Provider) UploadMedia(ctx context.Context, data []byte, filename, mime string) (string, error) {
 	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/media", p.apiVersion, p.phoneNumberID)

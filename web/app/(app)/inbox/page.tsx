@@ -24,6 +24,7 @@ import {
   listSessionMessages,
   sendMessage,
   addNote,
+  reactMessage,
   listQuickReplies,
   type ApiQuickReply,
   sendMedia,
@@ -554,6 +555,16 @@ export default function InboxPage() {
     }
   }
 
+  async function reagir(waId: string, emoji: string) {
+    if (!active) return;
+    try {
+      await reactMessage(active.id, waId, emoji);
+      await loadMsgs(active.id);
+    } catch (e) {
+      toast({ type: "error", title: "Falha ao reagir", message: (e as Error).message });
+    }
+  }
+
   async function transferir(setor: string) {
     if (!active) return;
     try {
@@ -934,7 +945,7 @@ export default function InboxPage() {
                 Sem mensagens ainda.
               </div>
             ) : (
-              msgs.map((m) => <MessageItem key={m.id} m={m} />)
+              msgs.map((m) => <MessageItem key={m.id} m={m} onReact={reagir} />)
             )}
           </div>
 

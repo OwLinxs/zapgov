@@ -87,6 +87,7 @@ func (h *Handler) Register(r fiber.Router) {
 	r.Put("/conversations/:id/claim", h.claim)
 	r.Put("/conversations/:id/transfer", h.transfer)
 	r.Post("/conversations/:id/note", h.addNote)
+	r.Post("/conversations/:id/react", h.react)
 	r.Put("/conversations/:id/resolve", h.resolve)
 	r.Put("/conversations/:id/optout", h.optOut)
 	r.Put("/conversations/:id/optin", h.optIn)
@@ -376,6 +377,24 @@ func (h *Handler) claim(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	h.tag(c, int64(id))
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) react(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var body struct {
+		WAMessageID string `json:"wa_message_id"`
+		Emoji       string `json:"emoji"` // vazio remove a reação
+	}
+	if err := c.BodyParser(&body); err != nil || body.WAMessageID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "wa_message_id é obrigatório"})
+	}
+	if err := h.svc.React(c.Context(), int64(id), body.WAMessageID, body.Emoji); err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
+	}
 	return c.JSON(fiber.Map{"ok": true})
 }
 

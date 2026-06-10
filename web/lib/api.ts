@@ -44,7 +44,8 @@ export interface ApiMessage {
   media_id: string;
   media_mime: string;
   media_name: string;
-  autor?: string; // quem escreveu (notas internas)
+  autor?: string;    // quem escreveu (notas internas)
+  reaction?: string; // emoji de reação (vazio = sem)
 }
 
 // Baixa a mídia (com auth) e devolve um object URL para exibir.
@@ -638,6 +639,11 @@ export async function sendMessage(to: string, body: string): Promise<ApiMessage>
 
 export async function addNote(convId: number, body: string): Promise<ApiMessage> {
   return post<ApiMessage>(`/conversations/${convId}/note`, { body });
+}
+
+// Reage com emoji a uma mensagem (emoji vazio remove a reação).
+export async function reactMessage(convId: number, waMessageId: string, emoji: string): Promise<void> {
+  await post(`/conversations/${convId}/react`, { wa_message_id: waMessageId, emoji });
 }
 
 // ---- Respostas rápidas (canned) ----

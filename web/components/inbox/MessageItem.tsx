@@ -4,8 +4,75 @@ import { useEffect, useState } from "react";
 import { WaBubble, Icon } from "@/components/ui";
 import { fetchMediaBlob, mapStatus, hhmm, type ApiMessage } from "@/lib/api";
 
+const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+// ReactionWrap envolve a bolha: badge da reação atual + picker no hover
+// (reagir só em mensagens do cidadão; onReact ausente = sem picker).
+function ReactionWrap({ m, onReact, children }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; children: React.ReactNode }) {
+  const [hover, setHover] = useState(false);
+  const [open, setOpen] = useState(false);
+  const podeReagir = !!onReact && m.direction === "in" && !!m.wa_message_id;
+
+  return (
+    <div
+      style={{ position: "relative" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setOpen(false); }}
+    >
+      {children}
+      {m.reaction && (
+        <div className={"wa-row " + (m.direction === "out" ? "out" : "in")} style={{ marginTop: -8 }}>
+          <span
+            style={{
+              fontSize: 13, background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)",
+              borderRadius: 99, padding: "1px 7px", boxShadow: "0 1px 2px rgba(0,0,0,.12)",
+              cursor: podeReagir ? "pointer" : "default",
+            }}
+            title={podeReagir ? "Clique para remover a reação" : undefined}
+            onClick={() => podeReagir && onReact!(m.wa_message_id, "")}
+          >
+            {m.reaction}
+          </span>
+        </div>
+      )}
+      {podeReagir && hover && (
+        <div style={{ position: "absolute", top: 2, left: "calc(100% - 270px)", zIndex: 5 }}>
+          {!open ? (
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              style={{ background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)", borderRadius: 99 }}
+              title="Reagir"
+              onClick={() => setOpen(true)}
+            >
+              <Icon name="smile" size={15} />
+            </button>
+          ) : (
+            <div
+              className="row center"
+              style={{
+                gap: 2, background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)",
+                borderRadius: 99, padding: "3px 6px", boxShadow: "0 4px 14px rgba(0,0,0,.18)",
+              }}
+            >
+              {EMOJIS.map((e) => (
+                <span
+                  key={e}
+                  style={{ fontSize: 17, cursor: "pointer", padding: "0 3px" }}
+                  onClick={() => { onReact!(m.wa_message_id, e); setOpen(false); }}
+                >
+                  {e}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Renderiza uma mensagem: nota interna, texto (WaBubble) ou mídia.
-export function MessageItem({ m }: { m: ApiMessage }) {
+export function MessageItem({ m, onReact }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void }) {
   if (m.direction === "note") {
     return (
       <div className="wa-row" style={{ justifyContent: "center" }}>
@@ -26,15 +93,21 @@ export function MessageItem({ m }: { m: ApiMessage }) {
   }
   if (!m.media_type) {
     return (
-      <WaBubble
-        text={m.body}
-        dir={m.direction === "out" ? "out" : "in"}
-        time={hhmm(m.created_at)}
-        status={m.direction === "out" ? mapStatus(m.status) : undefined}
-      />
+      <ReactionWrap m={m} onReact={onReact}>
+        <WaBubble
+          text={m.body}
+          dir={m.direction === "out" ? "out" : "in"}
+          time={hhmm(m.created_at)}
+          status={m.direction === "out" ? mapStatus(m.status) : undefined}
+        />
+      </ReactionWrap>
     );
   }
-  return <MediaBubble m={m} />;
+  return (
+    <ReactionWrap m={m} onReact={onReact}>
+      <MediaBubble m={m} />
+    </ReactionWrap>
+  );
 }
 
 function MediaBubble({ m }: { m: ApiMessage }) {

@@ -255,9 +255,16 @@ func (s *Service) DownloadMedia(ctx context.Context, mediaID string) ([]byte, st
 // Erros são logados mas não propagados de forma a impedir o HTTP 200 — a Meta
 // reentrega em caso de não-200, e a idempotência cobre o reprocessamento.
 func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
-	incoming, statuses, err := s.provider.ParseWebhook(body)
+	incoming, statuses, reactions, err := s.provider.ParseWebhook(body)
 	if err != nil {
 		return err
+	}
+
+	// Reações do cidadão: atualiza a mensagem alvo e avisa o front.
+	for _, rx := range reactions {
+		if convID, err := s.repo.SetReaction(ctx, rx.TargetWAMessageID, rx.Emoji); err == nil && convID > 0 {
+			s.emit(ctx, convID, "message")
+		}
 	}
 
 	for _, in := range incoming {
@@ -386,6 +393,23 @@ func (s *Service) OptInConversation(ctx context.Context, convID int64) error {
 // SetLabels aplica as etiquetas escolhidas a uma conversa.
 func (s *Service) SetLabels(ctx context.Context, convID int64, labelIDs []int64) error {
 	return s.repo.SetLabels(ctx, convID, labelIDs)
+}
+
+// React envia uma reação (emoji) a uma mensagem do cidadão e persiste.
+// Emoji vazio remove a reação.
+func (s *Service) React(ctx context.Context, convID int64, waMessageID, emoji string) error {
+	phone, err := s.repo.PhoneByID(ctx, convID)
+	if err != nil {
+		return err
+	}
+	if err := s.providerFor(ctx).SendReaction(ctx, phone, waMessageID, emoji); err != nil {
+		return fmt.Errorf("reagir falhou: %w", err)
+	}
+	if _, err := s.repo.SetReaction(ctx, waMessageID, emoji); err != nil {
+		return err
+	}
+	s.emit(ctx, convID, "message")
+	return nil
 }
 
 // AddNote grava uma nota interna (não vai pro cidadão) e emite evento p/ o front.

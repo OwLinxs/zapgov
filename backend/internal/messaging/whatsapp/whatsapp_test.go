@@ -48,14 +48,15 @@ func TestParseWebhook(t *testing.T) {
 	    "contacts":[{"profile":{"name":"João"},"wa_id":"5511999998888"}],
 	    "messages":[
 	      {"from":"5511999998888","id":"wamid.1","timestamp":"1700000000","type":"text","text":{"body":"oi"}},
-	      {"from":"5511999998888","id":"wamid.2","timestamp":"1700000001","type":"image","image":{"id":"media1","mime_type":"image/jpeg","caption":"foto"}}
+	      {"from":"5511999998888","id":"wamid.2","timestamp":"1700000001","type":"image","image":{"id":"media1","mime_type":"image/jpeg","caption":"foto"}},
+	      {"from":"5511999998888","id":"wamid.3","timestamp":"1700000003","type":"reaction","reaction":{"message_id":"wamid.0","emoji":"👍"}}
 	    ],
 	    "statuses":[{"id":"wamid.0","status":"read","timestamp":"1700000002","recipient_id":"5511999998888"}]
 	  }}]}]
 	}`)
 
 	p := New("", "", "", "v21.0")
-	incoming, statuses, err := p.ParseWebhook(body)
+	incoming, statuses, reactions, err := p.ParseWebhook(body)
 	if err != nil {
 		t.Fatalf("ParseWebhook erro: %v", err)
 	}
@@ -70,5 +71,8 @@ func TestParseWebhook(t *testing.T) {
 	}
 	if len(statuses) != 1 || statuses[0].Status != "read" {
 		t.Errorf("status inesperado: %+v", statuses)
+	}
+	if len(reactions) != 1 || reactions[0].TargetWAMessageID != "wamid.0" || reactions[0].Emoji != "👍" {
+		t.Errorf("reação inesperada: %+v", reactions)
 	}
 }
