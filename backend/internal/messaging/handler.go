@@ -304,7 +304,7 @@ func (h *Handler) listConversations(c *fiber.Ctx) error {
 			setor = us
 		}
 	}
-	convs, err := h.svc.ListConversations(c.Context(), c.QueryInt("limit", 100), setor, c.Query("status"), soAtendimento)
+	convs, err := h.svc.ListConversations(c.Context(), c.QueryInt("limit", 100), setor, c.Query("status"), c.Query("q"), soAtendimento)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}

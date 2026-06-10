@@ -349,11 +349,11 @@ func (s *Service) ListRecent(ctx context.Context, limit int) ([]Message, error) 
 
 // ListConversations devolve as conversas para a lista do inbox (filtro opcional).
 // soAtendimento=true esconde conversas em fase de bot (uso do papel atendente).
-func (s *Service) ListConversations(ctx context.Context, limit int, setor, status string, soAtendimento bool) ([]Conversation, error) {
-	if limit <= 0 || limit > 200 {
+func (s *Service) ListConversations(ctx context.Context, limit int, setor, status, q string, soAtendimento bool) ([]Conversation, error) {
+	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	return s.repo.ListConversations(ctx, limit, setor, status, soAtendimento)
+	return s.repo.ListConversations(ctx, limit, setor, status, q, soAtendimento)
 }
 
 // ListSessions devolve as sessões (atendimentos) de uma conversa.

@@ -441,6 +441,7 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [notaMode, setNotaMode] = useState(false);
   const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
+  const [finBusca, setFinBusca] = useState<ApiConversation[]>([]); // busca server-side em Finalizados
   const [novaOpen, setNovaOpen] = useState(false);
   const [midiaOpen, setMidiaOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -621,6 +622,23 @@ export default function InboxPage() {
   // Conversas ativas no filtro atual (podem ser finalizadas em massa).
   const ativasFiltradas = filtered.filter((c) => c.status !== "resolvido");
 
+  // Em Finalizados + busca: pesquisa no banco inteiro (não só nos ~100 carregados).
+  const buscandoFin = filter === "resolvido" && q.trim().length >= 2;
+  useEffect(() => {
+    if (!buscandoFin) { setFinBusca([]); return; }
+    const t = setTimeout(() => {
+      listConversations({ status: "resolvido", q: q.trim(), setor: setorFiltro, limit: 200 })
+        .then(setFinBusca)
+        .catch(() => setFinBusca([]));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [buscandoFin, q, setorFiltro]);
+
+  // Lista exibida: busca server-side em Finalizados, senão o filtro local.
+  const lista = buscandoFin
+    ? finBusca.filter((c) => atendenteFiltro === "Todos" || c.atendente === atendenteFiltro)
+    : filtered;
+
   async function finalizarEmMassa() {
     setBulkConfirm(false);
     try {
@@ -710,10 +728,10 @@ export default function InboxPage() {
         <div className="scroll-y grow">
           {erro ? (
             <EmptyState icon="alertCircle" title="API indisponível" sub={erro} />
-          ) : filtered.length === 0 ? (
-            <EmptyState icon="message" title="Nenhuma conversa" sub="Envie ou receba uma mensagem para começar." />
+          ) : lista.length === 0 ? (
+            <EmptyState icon="message" title={buscandoFin ? "Nada encontrado" : "Nenhuma conversa"} sub={buscandoFin ? "Nenhuma finalizada com esse nome/telefone." : "Envie ou receba uma mensagem para começar."} />
           ) : (
-            filtered.map((c) => (
+            lista.map((c) => (
               <div
                 key={c.id}
                 className={"conv-item" + (c.id === activeId ? " active" : "")}

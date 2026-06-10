@@ -287,7 +287,7 @@ func (r *Repository) UpdateStatus(ctx context.Context, waMessageID, status strin
 
 // ListConversations devolve as conversas (filtro opcional por setor/status),
 // ordenadas pela atividade mais recente, com a prévia da última mensagem.
-func (r *Repository) ListConversations(ctx context.Context, limit int, setor, status string, soAtendimento bool) ([]Conversation, error) {
+func (r *Repository) ListConversations(ctx context.Context, limit int, setor, status, q string, soAtendimento bool) ([]Conversation, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.id, c.contact_phone, c.contact_name, c.unread_count,
 		       COALESCE(m.body, '') AS last_message,
@@ -304,9 +304,10 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 		) m ON true
 		WHERE c.tenant_id = $5 AND ($2 = '' OR c.setor = $2) AND ($3 = '' OR c.status = $3)
 		  AND ($4 = false OR c.status <> '')
+		  AND ($6 = '' OR c.contact_name ILIKE '%'||$6||'%' OR c.contact_phone ILIKE '%'||$6||'%')
 		ORDER BY c.last_msg_at DESC
 		LIMIT $1`,
-		limit, setor, status, soAtendimento, tenantctx.From(ctx),
+		limit, setor, status, soAtendimento, tenantctx.From(ctx), q,
 	)
 	if err != nil {
 		return nil, err

@@ -136,10 +136,12 @@ export async function login(email: string, senha: string): Promise<{ token: stri
   return res.json();
 }
 
-export async function listConversations(filtros?: { setor?: string; status?: string }): Promise<ApiConversation[]> {
+export async function listConversations(filtros?: { setor?: string; status?: string; q?: string; limit?: number }): Promise<ApiConversation[]> {
   const qs = new URLSearchParams();
   if (filtros?.setor && filtros.setor !== "Todos") qs.set("setor", filtros.setor);
   if (filtros?.status) qs.set("status", filtros.status);
+  if (filtros?.q) qs.set("q", filtros.q);
+  if (filtros?.limit) qs.set("limit", String(filtros.limit));
   const suffix = qs.toString() ? "?" + qs.toString() : "";
   const data = await get<{ conversations: ApiConversation[] }>("/conversations" + suffix);
   return data.conversations ?? [];
