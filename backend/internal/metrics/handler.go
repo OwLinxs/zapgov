@@ -11,7 +11,16 @@ func NewHandler(repo *Repository) *Handler { return &Handler{repo: repo} }
 func (h *Handler) Register(r fiber.Router) {
 	r.Get("/metrics/kpis", h.kpis)
 	r.Get("/metrics/volume", h.volume)
+	r.Get("/metrics/atendentes", h.atendentes)
 	r.Get("/activity", h.activity)
+}
+
+func (h *Handler) atendentes(c *fiber.Ctx) error {
+	items, err := h.repo.Atendentes(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"atendentes": items})
 }
 
 func (h *Handler) kpis(c *fiber.Ctx) error {

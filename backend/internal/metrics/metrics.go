@@ -241,6 +241,44 @@ func (r *Repository) Atividade(ctx context.Context, limit int) ([]Atividade, err
 	return out, nil
 }
 
+// AtendenteStat é o desempenho de um atendente (últimos 30 dias).
+type AtendenteStat struct {
+	Nome          string  `json:"nome"`
+	Atendimentos  int     `json:"atendimentos"`
+	Mensagens     int     `json:"mensagens"`
+	TempoMedioMin float64 `json:"tempo_medio_min"`
+}
+
+func (r *Repository) Atendentes(ctx context.Context) ([]AtendenteStat, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT s.atendente,
+		       count(DISTINCT s.id) FILTER (WHERE s.encerrada_em IS NOT NULL) AS atendimentos,
+		       count(m.id) FILTER (WHERE m.direction = 'out') AS mensagens,
+		       COALESCE(avg(EXTRACT(EPOCH FROM (s.encerrada_em - s.iniciada_em)))
+		                FILTER (WHERE s.encerrada_em IS NOT NULL), 0) / 60 AS tempo_medio_min
+		FROM sessions s
+		LEFT JOIN messages m ON m.session_id = s.id
+		WHERE s.tenant_id = $1 AND s.atendente <> ''
+		  AND s.iniciada_em >= now() - interval '30 days'
+		GROUP BY s.atendente
+		ORDER BY atendimentos DESC, mensagens DESC`,
+		tenantctx.From(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (AtendenteStat, error) {
+		var a AtendenteStat
+		err := row.Scan(&a.Nome, &a.Atendimentos, &a.Mensagens, &a.TempoMedioMin)
+		a.TempoMedioMin = round1(a.TempoMedioMin)
+		return a, err
+	})
+	if out == nil {
+		out = []AtendenteStat{}
+	}
+	return out, err
+}
+
 // ---- helpers ----
 
 func round1(f float64) float64 {

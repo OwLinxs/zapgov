@@ -487,6 +487,15 @@ export interface ApiAtividade {
   tempo: string;
   operador?: string;
 }
+export interface ApiAtendenteStat {
+  nome: string;
+  atendimentos: number;
+  mensagens: number;
+  tempo_medio_min: number;
+}
+export const getAtendentes = async () =>
+  (await get<{ atendentes: ApiAtendenteStat[] }>("/metrics/atendentes")).atendentes ?? [];
+
 export const getKpis = () => get<ApiKpis>("/metrics/kpis");
 export const getVolume = async (range: "hora" | "dia") =>
   (await get<{ pontos: ApiVolumePoint[] }>(`/metrics/volume?range=${range}`)).pontos ?? [];

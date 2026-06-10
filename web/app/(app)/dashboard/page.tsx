@@ -11,11 +11,12 @@ import {
   Donut,
   StatusBadge,
   Skel,
+  Avatar,
 } from "@/components/ui";
 import { SETOR_COR } from "@/lib/data";
 import {
-  getKpis, getVolume, getActivity,
-  type ApiKpis, type ApiVolumePoint, type ApiAtividade,
+  getKpis, getVolume, getActivity, getAtendentes,
+  type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat,
 } from "@/lib/api";
 import { IconName } from "@/lib/icons";
 
@@ -66,15 +67,17 @@ export default function DashboardPage() {
   const [kpis, setKpis] = useState<ApiKpis | null>(null);
   const [dados, setDados] = useState<ApiVolumePoint[]>([]);
   const [atividade, setAtividade] = useState<ApiAtividade[]>([]);
+  const [atendentes, setAtendentes] = useState<ApiAtendenteStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (p: "hora" | "dia") => {
     setLoading(true);
     try {
-      const [k, v, a] = await Promise.all([getKpis(), getVolume(p), getActivity()]);
+      const [k, v, a, at] = await Promise.all([getKpis(), getVolume(p), getActivity(), getAtendentes().catch(() => [])]);
       setKpis(k);
       setDados(v);
       setAtividade(a);
+      setAtendentes(at);
     } catch { /* mantém o que já tem */ } finally {
       setLoading(false);
     }
@@ -262,6 +265,46 @@ export default function DashboardPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Desempenho por atendente (últimos 30 dias) */}
+          <div className="card">
+            <div className="card-head">
+              <div>
+                <div className="card-title">Desempenho por atendente</div>
+                <div className="card-sub">Últimos 30 dias</div>
+              </div>
+            </div>
+            {atendentes.length === 0 ? (
+              <div className="card-pad muted" style={{ fontSize: 13, textAlign: "center" }}>
+                {loading ? "Carregando…" : "Sem atendimentos no período."}
+              </div>
+            ) : (
+              <table className="ds-table">
+                <thead>
+                  <tr>
+                    <th>Atendente</th>
+                    <th style={{ textAlign: "right" }}>Atendimentos</th>
+                    <th style={{ textAlign: "right" }}>Mensagens</th>
+                    <th style={{ textAlign: "right" }}>Tempo médio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {atendentes.map((a) => (
+                    <tr key={a.nome}>
+                      <td className="strong">
+                        <div className="row center" style={{ gap: 9 }}>
+                          <Avatar name={a.nome} size={28} /> {a.nome}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right" }} className="mono">{a.atendimentos}</td>
+                      <td style={{ textAlign: "right" }} className="mono">{a.mensagens}</td>
+                      <td style={{ textAlign: "right" }} className="mono">{a.tempo_medio_min > 0 ? a.tempo_medio_min.toFixed(0) + " min" : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
