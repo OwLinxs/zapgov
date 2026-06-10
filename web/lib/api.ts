@@ -36,14 +36,15 @@ export interface ApiMessage {
   id: number;
   conversation_id: number;
   wa_message_id: string;
-  direction: "in" | "out";
+  direction: "in" | "out" | "note";
   body: string;
-  status: string; // sent|delivered|read|failed|received
+  status: string; // sent|delivered|read|failed|received|nota
   created_at: string;
   media_type: string; // ''=texto; image|audio|video|document|sticker
   media_id: string;
   media_mime: string;
   media_name: string;
+  autor?: string; // quem escreveu (notas internas)
 }
 
 // Baixa a mídia (com auth) e devolve um object URL para exibir.
@@ -602,6 +603,10 @@ async function del(path: string): Promise<void> {
 
 export async function sendMessage(to: string, body: string): Promise<ApiMessage> {
   return post<ApiMessage>("/messages/send", { to, body });
+}
+
+export async function addNote(convId: number, body: string): Promise<ApiMessage> {
+  return post<ApiMessage>(`/conversations/${convId}/note`, { body });
 }
 
 export async function sendTemplate(input: {

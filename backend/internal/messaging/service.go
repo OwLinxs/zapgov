@@ -356,6 +356,15 @@ func (s *Service) SetLabels(ctx context.Context, convID int64, labelIDs []int64)
 	return s.repo.SetLabels(ctx, convID, labelIDs)
 }
 
+// AddNote grava uma nota interna (não vai pro cidadão) e emite evento p/ o front.
+func (s *Service) AddNote(ctx context.Context, convID int64, autor, body string) (*Message, error) {
+	m, err := s.repo.AddNote(ctx, convID, autor, body)
+	if err == nil {
+		s.emit(ctx, convID, "message")
+	}
+	return m, err
+}
+
 // Transfer move a conversa para outro setor (volta à fila do novo setor).
 func (s *Service) Transfer(ctx context.Context, convID int64, setor string) error {
 	if err := s.repo.Transfer(ctx, convID, setor); err != nil {

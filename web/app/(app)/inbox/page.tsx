@@ -23,6 +23,7 @@ import {
   listSessions,
   listSessionMessages,
   sendMessage,
+  addNote,
   sendMedia,
   sendTemplate,
   listContacts,
@@ -394,6 +395,7 @@ export default function InboxPage() {
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [notaMode, setNotaMode] = useState(false);
   const [novaOpen, setNovaOpen] = useState(false);
   const [midiaOpen, setMidiaOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -590,11 +592,15 @@ export default function InboxPage() {
     setDraft("");
     setSending(true);
     try {
-      await sendMessage(active.contact_phone, texto);
+      if (notaMode) {
+        await addNote(active.id, texto);
+      } else {
+        await sendMessage(active.contact_phone, texto);
+      }
       await loadMsgs(active.id);
       loadConvs();
     } catch (e) {
-      toast({ type: "error", title: "Falha no envio", message: (e as Error).message });
+      toast({ type: "error", title: notaMode ? "Falha ao salvar nota" : "Falha no envio", message: (e as Error).message });
       setDraft(texto); // devolve o rascunho
     } finally {
       setSending(false);
@@ -883,20 +889,29 @@ export default function InboxPage() {
                   <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Enviar mídia" onClick={() => setMidiaOpen(true)}>
                     <Icon name="attach" size={18} />
                   </button>
+                  <button
+                    className={"btn btn-icon" + (notaMode ? "" : " btn-ghost")}
+                    style={{ height: 42, width: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, color: notaMode ? "var(--st-pending)" : undefined }}
+                    title="Nota interna (só a equipe vê)"
+                    onClick={() => setNotaMode((v) => !v)}
+                  >
+                    <Icon name="edit" size={18} />
+                  </button>
                   <input
                     className="input"
-                    style={{ height: 42 }}
-                    placeholder="Digite uma resposta…"
+                    style={{ height: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, borderColor: notaMode ? "var(--st-pending)" : undefined }}
+                    placeholder={notaMode ? "Nota interna (não vai pro cidadão)…" : "Digite uma resposta…"}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && enviar()}
                   />
-                  <Button variant="wa" style={{ height: 42, width: 42, padding: 0 }} aria-disabled={sending} onClick={enviar}>
-                    <Icon name="send" size={18} />
+                  <Button variant={notaMode ? "secondary" : "wa"} style={{ height: 42, width: 42, padding: 0 }} aria-disabled={sending} onClick={enviar}>
+                    <Icon name={notaMode ? "edit" : "send"} size={18} />
                   </Button>
                 </div>
-                <div className="row center" style={{ gap: 6, marginTop: 8, fontSize: 11, color: "var(--text-faint)" }}>
-                  <Icon name="info" size={12} /> Resposta livre só dentro da janela de 24h (regra da Meta).
+                <div className="row center" style={{ gap: 6, marginTop: 8, fontSize: 11, color: notaMode ? "var(--st-pending)" : "var(--text-faint)" }}>
+                  <Icon name="info" size={12} />
+                  {notaMode ? "Modo nota: salva só pra equipe, não envia ao cidadão." : "Resposta livre só dentro da janela de 24h (regra da Meta)."}
                 </div>
               </>
             )}

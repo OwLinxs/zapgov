@@ -60,6 +60,7 @@ func (h *Handler) Register(r fiber.Router) {
 	r.Get("/sessions/:id/messages", h.sessionMessages)
 	r.Put("/conversations/:id/claim", h.claim)
 	r.Put("/conversations/:id/transfer", h.transfer)
+	r.Post("/conversations/:id/note", h.addNote)
 	r.Put("/conversations/:id/resolve", h.resolve)
 	r.Put("/conversations/:id/optout", h.optOut)
 	r.Put("/conversations/:id/optin", h.optIn)
@@ -296,6 +297,24 @@ func (h *Handler) claim(c *fiber.Ctx) error {
 	}
 	h.tag(c, int64(id))
 	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) addNote(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var body struct {
+		Body string `json:"body"`
+	}
+	if err := c.BodyParser(&body); err != nil || body.Body == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "texto da nota é obrigatório"})
+	}
+	msg, err := h.svc.AddNote(c.Context(), int64(id), operador(c), body.Body)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 
 func (h *Handler) transfer(c *fiber.Ctx) error {

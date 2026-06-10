@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -54,14 +55,33 @@ type Message struct {
 	MediaID        string    `json:"media_id"`
 	MediaMime      string    `json:"media_mime"`
 	MediaName      string    `json:"media_name"`
+	Autor          string    `json:"autor"` // quem escreveu (notas internas)
 }
 
-const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name`
+const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor`
 
 func scanMessage(row pgx.CollectableRow) (Message, error) {
 	var m Message
 	err := row.Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
+	return m, err
+}
+
+// AddNote grava uma nota interna na conversa (não vai pro cidadão).
+func (r *Repository) AddNote(ctx context.Context, convID int64, autor, body string) (*Message, error) {
+	sid, err := r.ensureOpenSession(ctx, convID)
+	if err != nil {
+		return nil, err
+	}
+	waID := fmt.Sprintf("note-%d-%d", convID, time.Now().UnixNano())
+	m := &Message{}
+	err = r.pool.QueryRow(ctx, `
+		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status, autor)
+		VALUES ($6, $1, $2, $3, 'note', $4, 'nota', $5)
+		RETURNING `+msgCols,
+		convID, sid, waID, body, autor, tenantctx.From(ctx),
+	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
 	return m, err
 }
 
@@ -140,7 +160,7 @@ func (r *Repository) InsertOutbound(ctx context.Context, convID int64, waMessage
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, body, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +180,7 @@ func (r *Repository) InsertOutboundMedia(ctx context.Context, convID int64, waMe
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, caption, kind, name, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor)
 	return m, err
 }
 

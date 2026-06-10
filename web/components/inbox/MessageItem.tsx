@@ -4,13 +4,31 @@ import { useEffect, useState } from "react";
 import { WaBubble, Icon } from "@/components/ui";
 import { fetchMediaBlob, mapStatus, hhmm, type ApiMessage } from "@/lib/api";
 
-// Renderiza uma mensagem: texto (WaBubble) ou mídia (imagem/áudio/vídeo/documento).
+// Renderiza uma mensagem: nota interna, texto (WaBubble) ou mídia.
 export function MessageItem({ m }: { m: ApiMessage }) {
+  if (m.direction === "note") {
+    return (
+      <div className="wa-row" style={{ justifyContent: "center" }}>
+        <div
+          style={{
+            maxWidth: 340, background: "var(--st-pending-soft)", border: "1px solid var(--st-pending)",
+            borderRadius: 10, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
+          }}
+        >
+          <div className="row center" style={{ gap: 6, marginBottom: 3, color: "var(--st-pending)", fontWeight: 700, fontSize: 11 }}>
+            <Icon name="edit" size={12} /> Nota interna{m.autor ? " · " + m.autor : ""}
+          </div>
+          <div style={{ color: "var(--text-primary)" }}>{m.body}</div>
+          <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3, textAlign: "right" }}>{hhmm(m.created_at)}</div>
+        </div>
+      </div>
+    );
+  }
   if (!m.media_type) {
     return (
       <WaBubble
         text={m.body}
-        dir={m.direction}
+        dir={m.direction === "out" ? "out" : "in"}
         time={hhmm(m.created_at)}
         status={m.direction === "out" ? mapStatus(m.status) : undefined}
       />
