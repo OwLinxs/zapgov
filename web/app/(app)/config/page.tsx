@@ -14,14 +14,16 @@ import {
   listWebhooks, createWebhook, deleteWebhook,
   listUsers, createUser, updateUser, resetUserPassword,
   listDepartments,
+  listQuickReplies, createQuickReply, deleteQuickReply,
   type SettingsOrg, type SettingsMeta, type SettingsBilling, type SettingsWebhook,
-  type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type ApiUser, type Papel, type ApiDepartment,
+  type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type ApiUser, type Papel, type ApiDepartment, type ApiQuickReply,
 } from "@/lib/api";
 
 const SECS: { id: string; label: string; icon: IconName }[] = [
   { id: "org", label: "Organização", icon: "building" },
   { id: "whatsapp", label: "WhatsApp / Meta", icon: "phone" },
   { id: "atendimento", label: "Atendimento", icon: "message" },
+  { id: "respostas", label: "Respostas rápidas", icon: "zap" },
   { id: "usuarios", label: "Usuários e papéis", icon: "users" },
   { id: "webhooks", label: "Webhooks e API", icon: "webhook" },
   { id: "faturamento", label: "Faturamento", icon: "dollar" },
@@ -60,6 +62,7 @@ export default function ConfigPage() {
               {sec === "org" && <OrgSection />}
               {sec === "whatsapp" && <MetaSection />}
               {sec === "atendimento" && <AtendimentoSection />}
+              {sec === "respostas" && <RespostasSection />}
               {sec === "usuarios" && <UsuariosSection />}
               {sec === "webhooks" && <WebhooksSection />}
               {sec === "faturamento" && <FaturamentoSection />}
@@ -479,6 +482,80 @@ function MetaSection() {
       <div className="card card-pad" style={{ fontSize: 12.5, color: "var(--text-tertiary)", display: "flex", gap: 8 }}>
         <Icon name="info" size={15} style={{ flex: "none", marginTop: 1 }} />
         Credenciais (token, App Secret) vivem no ambiente do servidor (`.env`). Edição por painel entra com o multi-tenant.
+      </div>
+    </div>
+  );
+}
+
+function RespostasSection() {
+  const toast = useToast();
+  const [list, setList] = useState<ApiQuickReply[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [atalho, setAtalho] = useState("");
+  const [texto, setTexto] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setList(await listQuickReplies()); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    finally { setLoading(false); }
+  }, [toast]);
+  useEffect(() => { load(); }, [load]);
+
+  async function adicionar() {
+    if (!texto.trim()) return;
+    setSaving(true);
+    try {
+      await createQuickReply(atalho.trim(), texto.trim());
+      setAtalho(""); setTexto("");
+      load();
+    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    finally { setSaving(false); }
+  }
+  async function remover(id: number) {
+    try { await deleteQuickReply(id); load(); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+  }
+
+  return (
+    <div className="fade-in">
+      <Head title="Respostas rápidas" sub="Textos prontos que o atendente insere com um clique no chat." />
+      <div className="card card-pad col" style={{ gap: 12, marginBottom: 16 }}>
+        <div className="row" style={{ gap: 12 }}>
+          <Field label="Atalho (opcional)" hint="Ex.: /2via">
+            <Input value={atalho} onChange={(e) => setAtalho(e.target.value)} placeholder="/saudacao" />
+          </Field>
+        </div>
+        <Field label="Texto">
+          <textarea className="input" rows={3} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Olá! Como posso ajudar?" style={{ resize: "vertical", lineHeight: 1.5 }} />
+        </Field>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <Button variant="primary" icon="plus" aria-disabled={saving || !texto.trim()} onClick={adicionar}>{saving ? "Salvando…" : "Adicionar"}</Button>
+        </div>
+      </div>
+
+      <div className="card" style={{ overflow: "hidden" }}>
+        {loading ? (
+          <div className="card-pad col" style={{ gap: 10 }}>{[0, 1].map((i) => <Skel key={i} h={24} />)}</div>
+        ) : list.length === 0 ? (
+          <div className="card-pad muted" style={{ fontSize: 13, textAlign: "center" }}>Nenhuma resposta rápida ainda.</div>
+        ) : (
+          <table className="ds-table">
+            <thead><tr><th style={{ width: 130 }}>Atalho</th><th>Texto</th><th style={{ width: 40 }}></th></tr></thead>
+            <tbody>
+              {list.map((q) => (
+                <tr key={q.id}>
+                  <td className="mono" style={{ fontSize: 12.5 }}>{q.atalho || "—"}</td>
+                  <td style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>{q.texto}</td>
+                  <td>
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => remover(q.id)} title="Remover">
+                      <Icon name="trash" size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

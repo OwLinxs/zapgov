@@ -609,6 +609,18 @@ export async function addNote(convId: number, body: string): Promise<ApiMessage>
   return post<ApiMessage>(`/conversations/${convId}/note`, { body });
 }
 
+// ---- Respostas rápidas (canned) ----
+export interface ApiQuickReply {
+  id: number;
+  atalho: string;
+  texto: string;
+}
+export const listQuickReplies = async () =>
+  (await get<{ quick_replies: ApiQuickReply[] }>("/quick-replies")).quick_replies ?? [];
+export const createQuickReply = (atalho: string, texto: string) =>
+  post<ApiQuickReply>("/quick-replies", { atalho, texto });
+export const deleteQuickReply = (id: number) => del(`/quick-replies/${id}`);
+
 export async function sendTemplate(input: {
   to: string;
   template: string;

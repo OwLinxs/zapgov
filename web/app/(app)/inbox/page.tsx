@@ -24,6 +24,8 @@ import {
   listSessionMessages,
   sendMessage,
   addNote,
+  listQuickReplies,
+  type ApiQuickReply,
   sendMedia,
   sendTemplate,
   listContacts,
@@ -396,6 +398,7 @@ export default function InboxPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [notaMode, setNotaMode] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
   const [novaOpen, setNovaOpen] = useState(false);
   const [midiaOpen, setMidiaOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -463,6 +466,7 @@ export default function InboxPage() {
     loadConvs();
     listDepartments().then(setDeps).catch(() => {});
     listLabels().then(setLabels).catch(() => {});
+    listQuickReplies().then(setQuickReplies).catch(() => {});
     const t = setInterval(loadConvs, 20000);
     return () => clearInterval(t);
   }, [loadConvs]);
@@ -889,6 +893,28 @@ export default function InboxPage() {
                   <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Enviar mídia" onClick={() => setMidiaOpen(true)}>
                     <Icon name="attach" size={18} />
                   </button>
+                  {quickReplies.length > 0 && (
+                    <Dropdown
+                      up
+                      trigger={
+                        <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Respostas rápidas">
+                          <Icon name="zap" size={18} />
+                        </button>
+                      }
+                    >
+                      <div className="dropdown-label">Respostas rápidas</div>
+                      <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                        {quickReplies.map((qr) => (
+                          <div key={qr.id} className="dropdown-item" style={{ alignItems: "flex-start" }} onClick={() => setDraft((d) => (d ? d + " " : "") + qr.texto)}>
+                            <div className="col" style={{ gap: 1, minWidth: 0 }}>
+                              {qr.atalho && <span className="strong" style={{ fontSize: 12 }}>{qr.atalho}</span>}
+                              <span className="faint" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{qr.texto}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Dropdown>
+                  )}
                   <button
                     className={"btn btn-icon" + (notaMode ? "" : " btn-ghost")}
                     style={{ height: 42, width: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, color: notaMode ? "var(--st-pending)" : undefined }}

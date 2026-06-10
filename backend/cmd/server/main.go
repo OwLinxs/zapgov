@@ -28,6 +28,7 @@ import (
 	"zapgov/backend/internal/messaging/whatsapp"
 	"zapgov/backend/internal/metrics"
 	"zapgov/backend/internal/queue"
+	"zapgov/backend/internal/quickreplies"
 	"zapgov/backend/internal/realtime"
 	"zapgov/backend/internal/settings"
 	"zapgov/backend/internal/templates"
@@ -192,6 +193,7 @@ func main() {
 	departments.NewHandler(departments.NewRepository(pool)).Register(api, adminOnly)
 	labelsRepo := labels.NewRepository(pool)
 	labels.NewHandler(labelsRepo).Register(api, opsOnly) // criar/remover: admin/supervisor
+	quickreplies.NewHandler(quickreplies.NewRepository(pool)).Register(api, opsOnly)
 
 	chatbot.NewHandler(chatbot.NewService(chatbot.NewRepository(pool), svc)).Register(api, adminOnly)
 
