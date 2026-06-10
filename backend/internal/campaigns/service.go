@@ -22,6 +22,9 @@ type Service struct {
 	repo    *Repository
 	enq     Enqueuer
 	checker TemplateChecker
+	// SemWhatsApp, se definido, devolve quais telefones estão marcados como
+	// sem WhatsApp (erro 131026) — pulados no disparo.
+	SemWhatsApp func(ctx context.Context, phones []string) (map[string]bool, error)
 }
 
 func NewService(repo *Repository, enq Enqueuer, checker TemplateChecker) *Service {
@@ -60,6 +63,22 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Campaign, error)
 		if !ok {
 			return nil, fmt.Errorf("o template precisa estar aprovado e na categoria Utilidade para ser disparado")
 		}
+	}
+
+	// Pula números marcados como sem WhatsApp (não desperdiça envio).
+	if s.SemWhatsApp != nil {
+		if skip, err := s.SemWhatsApp(ctx, in.Phones); err == nil && len(skip) > 0 {
+			filtrados := in.Phones[:0]
+			for _, p := range in.Phones {
+				if !skip[p] {
+					filtrados = append(filtrados, p)
+				}
+			}
+			in.Phones = filtrados
+		}
+	}
+	if len(in.Phones) == 0 {
+		return nil, fmt.Errorf("todos os destinatários estão marcados como sem WhatsApp")
 	}
 
 	camp, err := s.repo.Create(ctx, Campaign{

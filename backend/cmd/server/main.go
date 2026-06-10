@@ -171,6 +171,10 @@ func main() {
 	msgHandler.EnsureContact = func(ctx context.Context, nome, telefone string) {
 		_ = contactsRepo.Ensure(ctx, nome, telefone)
 	}
+	// Meta reportou 131026 (número sem WhatsApp) → marca o contato.
+	svc.OnUndeliverable = func(ctx context.Context, phone string) {
+		_ = contactsRepo.MarkSemWhatsApp(ctx, phone)
+	}
 	metrics.NewHandler(metrics.NewRepository(pool)).Register(api)
 
 	templatesClient := templates.NewClient(cfg.WhatsAppWABAID, cfg.WhatsAppToken, cfg.WhatsAppAPIVersion)
@@ -193,6 +197,7 @@ func main() {
 	queueClient := queue.NewClient(cfg.RedisAddr)
 	defer queueClient.Close()
 	campaignSvc := campaigns.NewService(campaigns.NewRepository(pool), queueClient, templatesClient)
+	campaignSvc.SemWhatsApp = contactsRepo.SemWhatsApp // pula números sem WhatsApp
 	campaigns.NewHandler(campaignSvc).Register(api, opsOnly)
 
 	departments.NewHandler(departments.NewRepository(pool)).Register(api, adminOnly)

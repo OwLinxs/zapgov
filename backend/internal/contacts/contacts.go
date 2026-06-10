@@ -108,6 +108,38 @@ func (r *Repository) Ensure(ctx context.Context, nome, telefone string) error {
 	return err
 }
 
+// MarkSemWhatsApp marca o contato como sem WhatsApp (erro 131026 da Meta).
+func (r *Repository) MarkSemWhatsApp(ctx context.Context, telefone string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE contacts SET status = 'sem_whatsapp' WHERE tenant_id = $1 AND telefone = $2`,
+		tenantctx.From(ctx), telefone)
+	return err
+}
+
+// SemWhatsApp devolve, do conjunto informado, os telefones marcados como sem
+// WhatsApp (para pular em disparos).
+func (r *Repository) SemWhatsApp(ctx context.Context, telefones []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(telefones) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT telefone FROM contacts WHERE tenant_id = $1 AND status = 'sem_whatsapp' AND telefone = ANY($2)`,
+		tenantctx.From(ctx), telefones)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out[t] = true
+	}
+	return out, rows.Err()
+}
+
 // ImportRow é uma linha de importação em massa (vinda de CSV).
 type ImportRow struct {
 	Nome     string

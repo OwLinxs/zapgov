@@ -100,13 +100,28 @@ export function MessageItem({ m, onReact }: { m: ApiMessage; onReact?: (waId: st
           time={hhmm(m.created_at)}
           status={m.direction === "out" ? mapStatus(m.status) : undefined}
         />
+        <FailNote m={m} />
       </ReactionWrap>
     );
   }
   return (
     <ReactionWrap m={m} onReact={onReact}>
       <MediaBubble m={m} />
+      <FailNote m={m} />
     </ReactionWrap>
+  );
+}
+
+// FailNote mostra o motivo quando o envio falhou (ex.: número sem WhatsApp).
+function FailNote({ m }: { m: ApiMessage }) {
+  if (m.status !== "failed" || m.direction !== "out") return null;
+  return (
+    <div className="wa-row out" style={{ marginTop: 2 }}>
+      <span className="row center" style={{ gap: 5, fontSize: 11, color: "var(--st-failed)", fontWeight: 600 }}>
+        <Icon name="alertCircle" size={12} />
+        {m.error || "Falha no envio"}
+      </span>
+    </div>
   );
 }
 

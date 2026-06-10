@@ -62,6 +62,9 @@ type StatusUpdate struct {
 	WAMessageID string
 	Status      string // sent | delivered | read | failed
 	Timestamp   time.Time
+	RecipientID string // telefone do destinatário (wa_id)
+	ErrorCode   int    // código da Meta quando failed (ex.: 131026 = sem WhatsApp)
+	ErrorTitle  string
 }
 
 // ReactionUpdate é uma reação (emoji) do cidadão a uma mensagem nossa.

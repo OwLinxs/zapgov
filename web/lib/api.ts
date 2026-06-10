@@ -46,6 +46,7 @@ export interface ApiMessage {
   media_name: string;
   autor?: string;    // quem escreveu (notas internas)
   reaction?: string; // emoji de reação (vazio = sem)
+  error?: string;    // motivo da falha (status failed)
 }
 
 // Baixa a mídia (com auth) e devolve um object URL para exibir.
@@ -241,7 +242,7 @@ export interface ApiContact {
   cpf: string;
   setor: string;
   tags: string[] | null;
-  status: "ativo" | "bloqueado";
+  status: "ativo" | "bloqueado" | "sem_whatsapp";
   mensagens: number;
   ultimo_contato: string | null;
   criado_em: string;

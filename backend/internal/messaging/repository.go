@@ -57,14 +57,15 @@ type Message struct {
 	MediaName      string    `json:"media_name"`
 	Autor          string    `json:"autor"`    // quem escreveu (notas internas)
 	Reaction       string    `json:"reaction"` // emoji da reação (vazio = sem)
+	Error          string    `json:"error"`    // motivo da falha (status failed)
 }
 
-const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor, reaction`
+const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor, reaction, COALESCE(error, '')`
 
 func scanMessage(row pgx.CollectableRow) (Message, error) {
 	var m Message
 	err := row.Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
 	return m, err
 }
 
@@ -97,7 +98,7 @@ func (r *Repository) AddNote(ctx context.Context, convID int64, autor, body stri
 		RETURNING `+msgCols,
 		convID, sid, waID, body, autor, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
 	return m, err
 }
 
@@ -176,7 +177,7 @@ func (r *Repository) InsertOutbound(ctx context.Context, convID int64, waMessage
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, body, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +197,7 @@ func (r *Repository) InsertOutboundMedia(ctx context.Context, convID int64, waMe
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, caption, kind, name, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
 	return m, err
 }
 
@@ -291,12 +292,13 @@ func (r *Repository) WindowOpen(ctx context.Context, phone string) (bool, error)
 	return exp != nil && exp.After(time.Now()), nil
 }
 
-// UpdateStatus avança o status de uma mensagem enviada (por wa_message_id).
-func (r *Repository) UpdateStatus(ctx context.Context, waMessageID, status string) error {
+// UpdateStatus avança o status de uma mensagem enviada (por wa_message_id),
+// guardando o motivo quando for falha.
+func (r *Repository) UpdateStatus(ctx context.Context, waMessageID, status, errText string) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE messages SET status = $2, updated_at = now()
+		UPDATE messages SET status = $2, error = COALESCE(NULLIF($4,''), error), updated_at = now()
 		WHERE wa_message_id = $1 AND direction = 'out' AND tenant_id = $3`,
-		waMessageID, status, tenantctx.From(ctx),
+		waMessageID, status, tenantctx.From(ctx), errText,
 	)
 	return err
 }

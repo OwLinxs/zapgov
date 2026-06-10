@@ -280,6 +280,10 @@ type webhookEnvelope struct {
 					Status      string `json:"status"`
 					Timestamp   string `json:"timestamp"`
 					RecipientID string `json:"recipient_id"`
+					Errors      []struct {
+						Code  int    `json:"code"`
+						Title string `json:"title"`
+					} `json:"errors"`
 				} `json:"statuses"`
 			} `json:"value"`
 		} `json:"changes"`
@@ -375,11 +379,17 @@ func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []mes
 			}
 
 			for _, s := range v.Statuses {
-				statuses = append(statuses, messaging.StatusUpdate{
+				su := messaging.StatusUpdate{
 					WAMessageID: s.ID,
 					Status:      s.Status,
 					Timestamp:   parseUnix(s.Timestamp),
-				})
+					RecipientID: s.RecipientID,
+				}
+				if len(s.Errors) > 0 {
+					su.ErrorCode = s.Errors[0].Code
+					su.ErrorTitle = s.Errors[0].Title
+				}
+				statuses = append(statuses, su)
 			}
 		}
 	}

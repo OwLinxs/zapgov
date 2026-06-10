@@ -58,6 +58,10 @@ type Service struct {
 	// ChatbotEnabled, se definido e false, desliga o bot: a mensagem do cidadão
 	// vai direto pra fila (aguardando), sem menu/auto-resposta.
 	ChatbotEnabled func(ctx context.Context) bool
+
+	// OnUndeliverable, se definido, é chamado quando a Meta reporta que o número
+	// NÃO tem WhatsApp (erro 131026). Usado p/ marcar o contato.
+	OnUndeliverable func(ctx context.Context, phone string)
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -336,7 +340,15 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 	}
 
 	for _, st := range statuses {
-		if err := s.repo.UpdateStatus(ctx, st.WAMessageID, st.Status); err != nil {
+		errText := ""
+		if st.Status == "failed" {
+			errText = friendlyError(st.ErrorCode, st.ErrorTitle)
+			// 131026 = destinatário não tem WhatsApp → marca o contato.
+			if st.ErrorCode == 131026 && s.OnUndeliverable != nil && st.RecipientID != "" {
+				s.OnUndeliverable(ctx, CanonPhone(st.RecipientID))
+			}
+		}
+		if err := s.repo.UpdateStatus(ctx, st.WAMessageID, st.Status, errText); err != nil {
 			log.Printf("webhook: atualizar status %s: %v", st.WAMessageID, err)
 		}
 	}
@@ -344,6 +356,26 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		s.emit(ctx, 0, "status")
 	}
 	return nil
+}
+
+// friendlyError traduz os códigos de erro mais comuns da Meta.
+func friendlyError(code int, title string) string {
+	switch code {
+	case 131026:
+		return "Número sem WhatsApp (não cadastrado)"
+	case 131047:
+		return "Janela de 24h expirada — use um template"
+	case 131048, 131056:
+		return "Limite de envio atingido (spam) — tente mais tarde"
+	case 132000, 132001:
+		return "Problema no template (não existe ou parâmetros errados)"
+	case 131021:
+		return "Não é possível enviar para o próprio número"
+	}
+	if title != "" {
+		return fmt.Sprintf("Falha no envio (%d: %s)", code, title)
+	}
+	return "Falha no envio"
 }
 
 // ListRecent devolve as mensagens mais recentes.

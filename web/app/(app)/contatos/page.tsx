@@ -248,8 +248,8 @@ export default function ContatosPage() {
                           </div>
                         </td>
                         <td>
-                          <span className={"badge " + (c.status === "ativo" ? "badge-read" : "badge-failed")}>
-                            <span className="dot" /> {c.status === "ativo" ? "Ativo" : "Bloqueado"}
+                          <span className={"badge " + (c.status === "ativo" ? "badge-read" : c.status === "sem_whatsapp" ? "badge-pending" : "badge-failed")}>
+                            <span className="dot" /> {c.status === "ativo" ? "Ativo" : c.status === "sem_whatsapp" ? "Sem WhatsApp" : "Bloqueado"}
                           </span>
                         </td>
                         <td className="num mono">{c.mensagens}</td>
@@ -291,7 +291,7 @@ export default function ContatosPage() {
                   [
                     ["CPF", active.cpf || "—", true],
                     ["Setor", active.setor, false],
-                    ["Status", active.status === "ativo" ? "Ativo" : "Bloqueado", false],
+                    ["Status", active.status === "ativo" ? "Ativo" : active.status === "sem_whatsapp" ? "Sem WhatsApp" : "Bloqueado", false],
                     ["Total de mensagens", String(active.mensagens), false],
                     ["Último contato", fmtData(active.ultimo_contato), false],
                     ["Cadastrado em", fmtData(active.criado_em), false],
