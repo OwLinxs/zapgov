@@ -451,6 +451,19 @@ func (r *Repository) Enqueue(ctx context.Context, convID int64) error {
 	return err
 }
 
+// SetContactNameIfEmpty grava o nome do contato na conversa se ela ainda não
+// tiver (conversa iniciada pelo atendente com número avulso).
+func (r *Repository) SetContactNameIfEmpty(ctx context.Context, convID int64, nome string) error {
+	if nome == "" {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE conversations SET contact_name = $2
+		WHERE id = $1 AND tenant_id = $3 AND (contact_name = '' OR contact_name IS NULL)`,
+		convID, nome, tenantctx.From(ctx))
+	return err
+}
+
 // SetSetorIfEmpty define o setor da conversa apenas se ela ainda não tiver um.
 // Usado quando o atendente inicia a conversa (template/avulso): a conversa nasce
 // sem setor e, com o roteamento por setor ligado, sumiria da lista dele.

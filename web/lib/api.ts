@@ -654,6 +654,7 @@ export const deleteQuickReply = (id: number) => del(`/quick-replies/${id}`);
 
 export async function sendTemplate(input: {
   to: string;
+  nome?: string; // nome do destinatário (auto-cadastro de número avulso)
   template: string;
   language: string;
   params?: string[];

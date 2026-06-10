@@ -24,6 +24,9 @@ type Handler struct {
 	// TemplateAllowed, se definido, diz se um template está liberado para o setor
 	// (trava de template por departamento). nil = sem trava.
 	TemplateAllowed func(ctx context.Context, template, setor string) bool
+	// EnsureContact, se definido, garante o telefone no cadastro de contatos
+	// (auto-cadastro ao iniciar conversa com número avulso).
+	EnsureContact func(ctx context.Context, nome, telefone string)
 }
 
 func (h *Handler) routeBySetor(c *fiber.Ctx) bool {
@@ -168,6 +171,7 @@ func operador(c *fiber.Ctx) string {
 
 type templateRequest struct {
 	To       string   `json:"to"`
+	Nome     string   `json:"nome"` // nome do destinatário (auto-cadastro de avulso)
 	Template string   `json:"template"`
 	Language string   `json:"language"`
 	Params   []string `json:"params"`
@@ -195,6 +199,11 @@ func (h *Handler) sendTemplate(c *fiber.Ctx) error {
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
+	// Auto-cadastro: garante o destinatário nos contatos e o nome na conversa.
+	_ = h.svc.SetContactNameIfEmpty(c.Context(), msg.ConversationID, req.Nome)
+	if h.EnsureContact != nil {
+		h.EnsureContact(c.Context(), req.Nome, CanonPhone(req.To))
+	}
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 

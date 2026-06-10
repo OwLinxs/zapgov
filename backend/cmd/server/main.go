@@ -166,7 +166,12 @@ func main() {
 
 	msgHandler := messaging.NewHandler(svc)
 	msgHandler.Register(api)
-	contacts.NewHandler(contacts.NewRepository(pool)).Register(api)
+	contactsRepo := contacts.NewRepository(pool)
+	contacts.NewHandler(contactsRepo).Register(api)
+	// Auto-cadastro: número avulso vira contato ao iniciar conversa.
+	msgHandler.EnsureContact = func(ctx context.Context, nome, telefone string) {
+		_ = contactsRepo.Ensure(ctx, nome, telefone)
+	}
 	metrics.NewHandler(metrics.NewRepository(pool)).Register(api)
 
 	templatesClient := templates.NewClient(cfg.WhatsAppWABAID, cfg.WhatsAppToken, cfg.WhatsAppAPIVersion)

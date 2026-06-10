@@ -30,7 +30,6 @@ import {
   uploadMedia,
   sendTemplate,
   listContacts,
-  createContact,
   listTemplates,
   claimConversation,
   transferConversation,
@@ -133,19 +132,16 @@ function NovaConversaModal({
     setSending(true);
     try {
       const params = Array.from({ length: nVars }, (_, i) => vars[String(i + 1)] || "");
+      // O backend cadastra o contato e grava o nome COMPLETO na conversa.
       await sendTemplate({
         to: destTel,
+        nome: contato?.nome || nomeNovo.trim(),
         template: tpl.name,
         language: tpl.language,
         params,
         preview: corpo,
       });
-      // Número avulso (sem contato): cadastra automaticamente após o envio.
-      if (!contato && numero) {
-        const nome = nomeNovo.trim() || ("Contato " + numero);
-        try { await createContact({ nome, telefone: numero }); } catch { /* já existe ou falhou: ignora */ }
-      }
-      const quem = contato?.nome.split(" ")[0] || nomeNovo.trim() || numero;
+      const quem = contato?.nome || nomeNovo.trim() || numero;
       toast({ type: "wa", title: "Conversa iniciada", message: "Template enviado a " + quem });
       onSent(destTel);
       onClose();

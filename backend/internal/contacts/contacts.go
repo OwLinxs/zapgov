@@ -89,6 +89,25 @@ func (r *Repository) Create(ctx context.Context, c Contact) (*Contact, error) {
 	return &out, nil
 }
 
+// Ensure garante que o telefone exista nos contatos (cria se não houver; se já
+// existir, atualiza o nome caso esteja com o placeholder "Contato ...").
+func (r *Repository) Ensure(ctx context.Context, nome, telefone string) error {
+	if telefone == "" {
+		return nil
+	}
+	if nome == "" {
+		nome = "Contato " + telefone
+	}
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO contacts (tenant_id, nome, telefone)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tenant_id, telefone) DO UPDATE
+			SET nome = EXCLUDED.nome
+			WHERE contacts.nome LIKE 'Contato %'`,
+		tenantctx.From(ctx), nome, telefone)
+	return err
+}
+
 // ImportRow é uma linha de importação em massa (vinda de CSV).
 type ImportRow struct {
 	Nome     string

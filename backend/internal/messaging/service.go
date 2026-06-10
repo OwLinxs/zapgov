@@ -403,6 +403,11 @@ func (s *Service) SetSetorIfEmpty(ctx context.Context, convID int64, setor strin
 	return s.repo.SetSetorIfEmpty(ctx, convID, setor)
 }
 
+// SetContactNameIfEmpty grava o nome do contato na conversa (avulso).
+func (s *Service) SetContactNameIfEmpty(ctx context.Context, convID int64, nome string) error {
+	return s.repo.SetContactNameIfEmpty(ctx, convID, nome)
+}
+
 // Transfer move a conversa para outro setor (volta à fila do novo setor).
 func (s *Service) Transfer(ctx context.Context, convID int64, setor string) error {
 	if err := s.repo.Transfer(ctx, convID, setor); err != nil {
