@@ -397,6 +397,12 @@ func (s *Service) AddNote(ctx context.Context, convID int64, autor, body string)
 	return m, err
 }
 
+// SetSetorIfEmpty define o setor da conversa se ainda não tiver (conversa
+// iniciada pelo atendente herda o setor dele).
+func (s *Service) SetSetorIfEmpty(ctx context.Context, convID int64, setor string) error {
+	return s.repo.SetSetorIfEmpty(ctx, convID, setor)
+}
+
 // Transfer move a conversa para outro setor (volta à fila do novo setor).
 func (s *Service) Transfer(ctx context.Context, convID int64, setor string) error {
 	if err := s.repo.Transfer(ctx, convID, setor); err != nil {

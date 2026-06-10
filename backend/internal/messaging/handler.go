@@ -36,6 +36,15 @@ func (h *Handler) tag(c *fiber.Ctx, convID int64) {
 	}
 }
 
+// herdaSetor grava o setor do atendente na conversa (se ela ainda não tiver).
+// Sem isso, conversa iniciada por template nasce sem setor e some da lista de
+// quem a criou quando o roteamento por setor está ligado.
+func (h *Handler) herdaSetor(c *fiber.Ctx, convID int64) {
+	if setor, _ := c.Locals("setor").(string); setor != "" {
+		_ = h.svc.SetSetorIfEmpty(c.Context(), convID, setor)
+	}
+}
+
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
@@ -145,6 +154,7 @@ func (h *Handler) sendMessage(c *fiber.Ctx) error {
 	// Respondeu uma conversa da fila → assume automaticamente.
 	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
+	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 
@@ -184,6 +194,7 @@ func (h *Handler) sendTemplate(c *fiber.Ctx) error {
 	// Assim, a resposta do cidadão NÃO dispara o bot (já está com humano).
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
+	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 
@@ -215,6 +226,7 @@ func (h *Handler) sendMedia(c *fiber.Ctx) error {
 	}
 	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
+	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 
@@ -250,6 +262,7 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	}
 	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
+	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 

@@ -451,6 +451,20 @@ func (r *Repository) Enqueue(ctx context.Context, convID int64) error {
 	return err
 }
 
+// SetSetorIfEmpty define o setor da conversa apenas se ela ainda não tiver um.
+// Usado quando o atendente inicia a conversa (template/avulso): a conversa nasce
+// sem setor e, com o roteamento por setor ligado, sumiria da lista dele.
+func (r *Repository) SetSetorIfEmpty(ctx context.Context, convID int64, setor string) error {
+	if setor == "" {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE conversations SET setor = $2
+		WHERE id = $1 AND tenant_id = $3 AND (setor = '' OR setor IS NULL)`,
+		convID, setor, tenantctx.From(ctx))
+	return err
+}
+
 // Transfer move a conversa para outro setor e devolve à fila (aguardando,
 // sem atendente), para o time do novo setor assumir.
 func (r *Repository) Transfer(ctx context.Context, id int64, setor string) error {
