@@ -39,6 +39,17 @@ func (h *Handler) tag(c *fiber.Ctx, convID int64) {
 	}
 }
 
+// setorEfetivo decide o filtro de setor da listagem: com o roteamento por setor
+// ligado, o atendente é FORÇADO ao próprio setor (ignora o filtro pedido);
+// atendente sem setor definido vê tudo (não trava acesso); admin/supervisor
+// usam o filtro que pediram. Função pura — testável sem HTTP.
+func setorEfetivo(papel, setorUsuario, setorPedido string, rotear bool) string {
+	if papel == "atendente" && rotear && setorUsuario != "" {
+		return setorUsuario
+	}
+	return setorPedido
+}
+
 // herdaSetor grava o setor do atendente na conversa (se ela ainda não tiver).
 // Sem isso, conversa iniciada por template nasce sem setor e some da lista de
 // quem a criou quando o roteamento por setor está ligado.
@@ -319,13 +330,8 @@ func (h *Handler) listConversations(c *fiber.Ctx) error {
 	// Atendente não enxerga conversas em fase de bot — só fila/atendimento/resolvidas.
 	papel, _ := c.Locals("papel").(string)
 	soAtendimento := papel == "atendente"
-	// Roteamento por setor: o atendente só vê as conversas do próprio setor.
-	// (Atendente sem setor definido continua vendo tudo, p/ não travar acesso.)
-	if papel == "atendente" && h.routeBySetor(c) {
-		if us, _ := c.Locals("setor").(string); us != "" {
-			setor = us
-		}
-	}
+	userSetor, _ := c.Locals("setor").(string)
+	setor = setorEfetivo(papel, userSetor, setor, h.routeBySetor(c))
 	convs, err := h.svc.ListConversations(c.Context(), c.QueryInt("limit", 100), setor, c.Query("status"), c.Query("q"), soAtendimento)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

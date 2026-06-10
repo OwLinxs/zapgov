@@ -5,7 +5,6 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -259,34 +258,7 @@ func main() {
 		if e != nil || loc == nil {
 			loc = time.UTC
 		}
-		now := time.Now().In(loc)
-
-		// Feriado / fim de semana (toggle de ausência).
-		if a.Ativo {
-			md, ymd := now.Format("01-02"), now.Format("2006-01-02")
-			for _, f := range a.Feriados {
-				if (f == md || f == ymd) && a.Feriado != "" {
-					return a.Feriado, true
-				}
-			}
-			if wd := now.Weekday(); wd == time.Saturday || wd == time.Sunday {
-				if a.FimSemana != "" {
-					return a.FimSemana, true
-				}
-			}
-		}
-
-		// Horário comercial: fora do expediente em dia útil configurado.
-		if a.HorarioAtivo && a.HorarioMsg != "" {
-			wd := strconv.Itoa(int(now.Weekday()))
-			if strings.Contains(","+a.HorarioDias+",", ","+wd+",") {
-				cur := now.Format("15:04")
-				if cur < a.HorarioInicio || cur >= a.HorarioFim {
-					return a.HorarioMsg, true
-				}
-			}
-		}
-		return "", false
+		return settings.MensagemAusencia(a, time.Now().In(loc))
 	}
 
 	// Mensagem de encerramento: ao finalizar uma conversa, manda um aviso ao

@@ -6,6 +6,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -162,6 +164,37 @@ func (r *Repository) GetAusencia(ctx context.Context) (Ausencia, error) {
 		a.Feriados = []string{}
 	}
 	return a, err
+}
+
+// MensagemAusencia decide, para um instante (já no fuso da org), qual
+// auto-resposta cabe: feriado > fim de semana > fora do horário comercial.
+// Função pura — vive aqui para ser testável sem banco/HTTP.
+func MensagemAusencia(a Ausencia, now time.Time) (string, bool) {
+	// Feriado / fim de semana.
+	if a.Ativo {
+		md, ymd := now.Format("01-02"), now.Format("2006-01-02")
+		for _, f := range a.Feriados {
+			if (f == md || f == ymd) && a.Feriado != "" {
+				return a.Feriado, true
+			}
+		}
+		if wd := now.Weekday(); wd == time.Saturday || wd == time.Sunday {
+			if a.FimSemana != "" {
+				return a.FimSemana, true
+			}
+		}
+	}
+	// Horário comercial: fora do expediente em dia útil configurado.
+	if a.HorarioAtivo && a.HorarioMsg != "" {
+		wd := strconv.Itoa(int(now.Weekday()))
+		if strings.Contains(","+a.HorarioDias+",", ","+wd+",") {
+			cur := now.Format("15:04")
+			if cur < a.HorarioInicio || cur >= a.HorarioFim {
+				return a.HorarioMsg, true
+			}
+		}
+	}
+	return "", false
 }
 
 func (r *Repository) SetAusencia(ctx context.Context, a Ausencia) error {

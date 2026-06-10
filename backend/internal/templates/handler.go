@@ -78,20 +78,28 @@ func (h *Handler) list(c *fiber.Ctx) error {
 		}
 	}
 
-	// Atendente só vê os templates liberados pro setor dele (sem atribuição =
-	// invisível). Admin/supervisor veem todos (e gerenciam).
 	papel, _ := c.Locals("papel").(string)
-	if papel == "atendente" {
-		setor, _ := c.Locals("setor").(string)
-		filtrados := tpls[:0]
-		for _, t := range tpls {
-			if setor != "" && contains(t.Setores, setor) {
-				filtrados = append(filtrados, t)
-			}
-		}
-		tpls = filtrados
+	setor, _ := c.Locals("setor").(string)
+	return c.JSON(fiber.Map{"templates": VisibleFor(tpls, papel, setor)})
+}
+
+// VisibleFor aplica a regra de visibilidade de templates: atendente só vê os
+// liberados pro setor dele (sem atribuição = invisível; sem setor = nenhum);
+// admin/supervisor veem todos. Função pura — testável sem HTTP.
+func VisibleFor(tpls []Template, papel, setor string) []Template {
+	if papel != "atendente" {
+		return tpls
 	}
-	return c.JSON(fiber.Map{"templates": tpls})
+	out := make([]Template, 0, len(tpls))
+	if setor == "" {
+		return out
+	}
+	for _, t := range tpls {
+		if contains(t.Setores, setor) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func contains(ss []string, v string) bool {
