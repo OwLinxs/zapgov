@@ -19,6 +19,9 @@ type Handler struct {
 	// TagAttendant, se definido, aplica uma etiqueta com o nome do atendente ao
 	// assumir a conversa (config por tenant; no-op se desligado).
 	TagAttendant func(ctx context.Context, convID int64, nome string)
+	// TemplateAllowed, se definido, diz se um template está liberado para o setor
+	// (trava de template por departamento). nil = sem trava.
+	TemplateAllowed func(ctx context.Context, template, setor string) bool
 }
 
 func (h *Handler) routeBySetor(c *fiber.Ctx) bool {
@@ -161,6 +164,13 @@ func (h *Handler) sendTemplate(c *fiber.Ctx) error {
 	var req templateRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	// Trava por departamento: atendente só dispara template liberado pro setor dele.
+	if papel, _ := c.Locals("papel").(string); papel == "atendente" && h.TemplateAllowed != nil {
+		setor, _ := c.Locals("setor").(string)
+		if !h.TemplateAllowed(c.Context(), req.Template, setor) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "template não liberado para o seu departamento"})
+		}
 	}
 	msg, err := h.svc.SendTemplate(c.Context(), req.To, req.Template, req.Language, req.Params, req.Preview)
 	if err != nil {

@@ -191,6 +191,7 @@ export interface ApiTemplate {
   buttons: string[] | null;
   variables: number;
   motivo?: string;
+  setores: string[]; // departamentos liberados (vazio = só admin/supervisor)
 }
 
 export async function listTemplates(): Promise<ApiTemplate[]> {
@@ -210,6 +211,9 @@ export async function createTemplate(input: {
 }): Promise<void> {
   await post("/templates", input);
 }
+
+export const setTemplateSetores = (name: string, setores: string[]) =>
+  post(`/templates/${encodeURIComponent(name)}/setores`, { setores }, "PUT");
 
 export interface ApiContact {
   id: number;

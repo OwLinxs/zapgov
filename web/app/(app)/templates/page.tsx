@@ -16,7 +16,8 @@ import {
   WaBubble,
   useToast,
 } from "@/components/ui";
-import { listTemplates, createTemplate, type ApiTemplate } from "@/lib/api";
+import { listTemplates, createTemplate, listDepartments, setTemplateSetores, type ApiTemplate, type ApiDepartment } from "@/lib/api";
+import { SETOR_COR } from "@/lib/data";
 
 const CAT_CODE: Record<string, string> = { Utilidade: "UTILITY", Marketing: "MARKETING", Autenticação: "AUTHENTICATION" };
 
@@ -147,13 +148,16 @@ export default function TemplatesPage() {
   const [tab, setTab] = useState("todos");
   const [novo, setNovo] = useState(false);
   const [tpls, setTpls] = useState<ApiTemplate[]>([]);
+  const [deps, setDeps] = useState<ApiDepartment[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTpls(await listTemplates());
+      const [ts, ds] = await Promise.all([listTemplates(), listDepartments().catch(() => [])]);
+      setTpls(ts);
+      setDeps(ds);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -165,6 +169,19 @@ export default function TemplatesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function toggleSetor(t: ApiTemplate, setor: string) {
+    const next = (t.setores || []).includes(setor)
+      ? t.setores.filter((s) => s !== setor)
+      : [...(t.setores || []), setor];
+    setTpls((ts) => ts.map((x) => (x.name === t.name ? { ...x, setores: next } : x))); // otimista
+    try {
+      await setTemplateSetores(t.name, next);
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      load();
+    }
+  }
 
   const counts = {
     todos: tpls.length,
@@ -259,6 +276,38 @@ export default function TemplatesPage() {
                         </span>
                       </div>
                     )}
+                  </div>
+                  {/* Departamentos liberados a usar este template */}
+                  <div className="row center" style={{ gap: 6, flexWrap: "wrap", padding: "10px 16px 0" }}>
+                    <span className="field-label" style={{ fontSize: 11 }}>Departamentos:</span>
+                    {(t.setores || []).length === 0 ? (
+                      <span className="muted" style={{ fontSize: 11.5 }}>nenhum (só admin/supervisor)</span>
+                    ) : (
+                      (t.setores || []).map((s) => (
+                        <span key={s} className="tag" style={{ fontSize: 11 }}>
+                          <span className="tag-dot" style={{ background: SETOR_COR[s] || "var(--text-faint)" }} /> {s}
+                        </span>
+                      ))
+                    )}
+                    <Dropdown
+                      trigger={<button className="btn btn-ghost btn-icon btn-sm" title="Liberar departamentos"><Icon name="edit" size={13} /></button>}
+                    >
+                      <div className="dropdown-label">Liberar para</div>
+                      {deps.length === 0 ? (
+                        <div className="dropdown-item muted">Nenhum departamento</div>
+                      ) : (
+                        deps.map((d) => {
+                          const on = (t.setores || []).includes(d.nome);
+                          return (
+                            <div key={d.id} className="dropdown-item" onClick={() => toggleSetor(t, d.nome)}>
+                              <span style={{ width: 10, height: 10, borderRadius: 3, background: d.cor, flex: "none" }} />
+                              <span className="grow">{d.nome}</span>
+                              {on && <Icon name="check" size={14} />}
+                            </div>
+                          );
+                        })
+                      )}
+                    </Dropdown>
                   </div>
                   <div className="row between center" style={{ padding: "11px 16px", borderTop: "1px solid var(--border-subtle)" }}>
                     <div className="mono faint" style={{ fontSize: 11 }}>

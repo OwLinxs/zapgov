@@ -176,7 +176,13 @@ func main() {
 		}
 		return cr.WABAID, cr.Token, cr.APIVersion
 	}
-	templates.NewHandler(templatesClient).Register(api, opsOnly)
+	templatesRepo := templates.NewRepository(pool)
+	templates.NewHandler(templatesClient, templatesRepo).Register(api, opsOnly)
+	// Trava de template por departamento (atendente).
+	msgHandler.TemplateAllowed = func(ctx context.Context, template, setor string) bool {
+		ok, _ := templatesRepo.Allowed(ctx, template, setor)
+		return ok
+	}
 
 	queueClient := queue.NewClient(cfg.RedisAddr)
 	defer queueClient.Close()
