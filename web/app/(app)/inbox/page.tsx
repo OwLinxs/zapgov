@@ -27,6 +27,7 @@ import {
   listQuickReplies,
   type ApiQuickReply,
   sendMedia,
+  uploadMedia,
   sendTemplate,
   listContacts,
   createContact,
@@ -310,26 +311,32 @@ function MidiaModal({
   onSent: () => void;
 }) {
   const toast = useToast();
+  const [file, setFile] = useState<File | null>(null);
+  const [caption, setCaption] = useState("");
+  const [sending, setSending] = useState(false);
+  const [porLink, setPorLink] = useState(false);
   const [kind, setKind] = useState("image");
   const [link, setLink] = useState("");
-  const [caption, setCaption] = useState("");
   const [name, setName] = useState("");
-  const [sending, setSending] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setKind("image");
-      setLink("");
-      setCaption("");
-      setName("");
+      setFile(null); setCaption(""); setPorLink(false);
+      setKind("image"); setLink(""); setName("");
     }
   }, [open]);
 
   async function enviar() {
-    if (!link.trim()) return;
     setSending(true);
     try {
-      await sendMedia({ to: phone, kind, link, caption, name });
+      if (porLink) {
+        if (!link.trim()) return;
+        await sendMedia({ to: phone, kind, link, caption, name });
+      } else {
+        if (!file) return;
+        await uploadMedia(phone, file, caption);
+      }
       toast({ type: "wa", title: "Mídia enviada" });
       onSent();
       onClose();
@@ -340,40 +347,75 @@ function MidiaModal({
     }
   }
 
+  const podeEnviar = porLink ? !!link.trim() : !!file;
+
   return (
     <Modal open={open} onClose={onClose} width={460}>
       <div className="modal-head">
-        <div className="modal-title">Enviar mídia</div>
-        <div className="modal-sub">Por link público (URL acessível pela Meta).</div>
+        <div className="modal-title">Enviar arquivo</div>
+        <div className="modal-sub">Imagem, documento, áudio ou vídeo.</div>
       </div>
       <div className="modal-body col" style={{ gap: 14 }}>
-        <Field label="Tipo">
-          <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="image">Imagem</option>
-            <option value="document">Documento</option>
-            <option value="video">Vídeo</option>
-            <option value="audio">Áudio</option>
-          </select>
-        </Field>
-        <Field label="URL do arquivo">
-          <Input icon="link" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" />
-        </Field>
-        {kind === "document" && (
-          <Field label="Nome do arquivo">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="documento.pdf" />
-          </Field>
+        {!porLink ? (
+          <>
+            <input ref={fileRef} type="file" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <div
+              onClick={() => fileRef.current?.click()}
+              style={{
+                border: "1.5px dashed var(--border)", borderRadius: 10, padding: "22px 16px",
+                textAlign: "center", cursor: "pointer", background: "var(--bg-sunken)",
+              }}
+            >
+              {file ? (
+                <div className="col center" style={{ gap: 4 }}>
+                  <Icon name="fileText" size={22} />
+                  <span className="strong" style={{ fontSize: 13 }}>{file.name}</span>
+                  <span className="faint" style={{ fontSize: 11 }}>{(file.size / 1024).toFixed(0)} KB · clique para trocar</span>
+                </div>
+              ) : (
+                <div className="col center" style={{ gap: 4, color: "var(--text-tertiary)" }}>
+                  <Icon name="attach" size={22} />
+                  <span style={{ fontSize: 13 }}>Clique para escolher um arquivo</span>
+                  <span className="faint" style={{ fontSize: 11 }}>até ~16 MB</span>
+                </div>
+              )}
+            </div>
+            <Field label="Legenda (opcional)">
+              <Input value={caption} onChange={(e) => setCaption(e.target.value)} />
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label="Tipo">
+              <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="image">Imagem</option>
+                <option value="document">Documento</option>
+                <option value="video">Vídeo</option>
+                <option value="audio">Áudio</option>
+              </select>
+            </Field>
+            <Field label="URL do arquivo">
+              <Input icon="link" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" />
+            </Field>
+            {kind === "document" && (
+              <Field label="Nome do arquivo">
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="documento.pdf" />
+              </Field>
+            )}
+            {kind !== "audio" && (
+              <Field label="Legenda (opcional)">
+                <Input value={caption} onChange={(e) => setCaption(e.target.value)} />
+              </Field>
+            )}
+          </>
         )}
-        {kind !== "audio" && (
-          <Field label="Legenda (opcional)">
-            <Input value={caption} onChange={(e) => setCaption(e.target.value)} />
-          </Field>
-        )}
+        <a style={{ fontSize: 12, color: "var(--brand-text)", cursor: "pointer" }} onClick={() => setPorLink((v) => !v)}>
+          {porLink ? "← Enviar arquivo do computador" : "ou enviar por link público"}
+        </a>
       </div>
       <div className="modal-foot">
-        <Button variant="ghost" onClick={onClose}>
-          Cancelar
-        </Button>
-        <Button variant="wa" icon="send" aria-disabled={sending || !link} onClick={enviar}>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="wa" icon="send" aria-disabled={sending || !podeEnviar} onClick={enviar}>
           {sending ? "Enviando…" : "Enviar"}
         </Button>
       </div>

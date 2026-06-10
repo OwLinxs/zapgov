@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"time"
@@ -383,10 +385,65 @@ func fillMedia(im *messaging.IncomingMessage, kind string, mo *mediaObj) {
 // ---------- Envio de mídia por link ----------
 
 // SendMedia envia imagem/documento/áudio/vídeo a partir de uma URL pública.
+// UploadMedia sobe um arquivo pra Meta e devolve o media_id (válido p/ envio).
+func (p *Provider) UploadMedia(ctx context.Context, data []byte, filename, mime string) (string, error) {
+	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/media", p.apiVersion, p.phoneNumberID)
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	_ = w.WriteField("messaging_product", "whatsapp")
+	if mime != "" {
+		_ = w.WriteField("type", mime)
+	}
+	// part do arquivo com Content-Type correto.
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, filename))
+	if mime != "" {
+		h.Set("Content-Type", mime)
+	}
+	part, err := w.CreatePart(h)
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", err
+	}
+	w.Close()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+p.token)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload mídia: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("Meta recusou upload (%d): %s", resp.StatusCode, string(body))
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil || out.ID == "" {
+		return "", fmt.Errorf("resposta de upload inesperada: %s", string(body))
+	}
+	return out.ID, nil
+}
+
 func (p *Provider) SendMedia(ctx context.Context, msg messaging.OutgoingMedia) (messaging.SendResult, error) {
 	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/messages", p.apiVersion, p.phoneNumberID)
 
-	media := map[string]any{"link": msg.Link}
+	media := map[string]any{}
+	if msg.ID != "" {
+		media["id"] = msg.ID // upload prévio (arquivo)
+	} else {
+		media["link"] = msg.Link
+	}
 	if msg.Caption != "" && (msg.Kind == "image" || msg.Kind == "video" || msg.Kind == "document") {
 		media["caption"] = msg.Caption
 	}

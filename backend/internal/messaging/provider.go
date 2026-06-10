@@ -46,11 +46,13 @@ type MenuOption struct {
 	Label string
 }
 
-// OutgoingMedia é uma mídia a enviar por link (URL pública).
+// OutgoingMedia é uma mídia a enviar por link (URL pública) ou por media_id
+// (após upload na Meta).
 type OutgoingMedia struct {
 	To      string
 	Kind    string // image|document|audio|video
-	Link    string
+	Link    string // URL pública (alternativa ao ID)
+	ID      string // media_id da Meta (upload prévio) — prioridade sobre Link
 	Caption string
 	Name    string // nome do arquivo (document)
 }
@@ -70,6 +72,7 @@ type MessageProvider interface {
 	SendTemplate(ctx context.Context, msg TemplateMessage) (SendResult, error)
 	SendMenu(ctx context.Context, to, text string, options []MenuOption) (SendResult, error)
 	SendMedia(ctx context.Context, msg OutgoingMedia) (SendResult, error)
+	UploadMedia(ctx context.Context, data []byte, filename, mime string) (mediaID string, err error)
 	DownloadMedia(ctx context.Context, mediaID string) (data []byte, mime string, err error)
 	ParseWebhook(body []byte) ([]IncomingMessage, []StatusUpdate, error)
 	VerifySignature(body []byte, signatureHeader string) bool

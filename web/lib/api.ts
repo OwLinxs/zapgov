@@ -64,6 +64,21 @@ export async function sendMedia(input: {
   return post<ApiMessage>("/messages/media", input);
 }
 
+// Envia um arquivo (upload direto pra Meta, sem precisar de URL pública).
+export async function uploadMedia(to: string, file: File, caption?: string): Promise<ApiMessage> {
+  const fd = new FormData();
+  fd.append("to", to);
+  if (caption) fd.append("caption", caption);
+  fd.append("file", file);
+  const res = await fetch(BASE + "/messages/upload", { method: "POST", headers: authHeaders(), body: fd });
+  if (res.status === 401) { handle401(401); throw new Error("Não autenticado"); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Falha ao enviar" }));
+    throw new Error(err.error || "Falha ao enviar");
+  }
+  return res.json();
+}
+
 // ---- token / sessão ----
 export function getToken(): string | null {
   return typeof window === "undefined" ? null : localStorage.getItem("zg-token");

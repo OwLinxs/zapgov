@@ -3,6 +3,8 @@ package messaging
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -52,6 +54,7 @@ func (h *Handler) Register(r fiber.Router) {
 	r.Post("/messages/send", h.sendMessage)
 	r.Post("/messages/template", h.sendTemplate)
 	r.Post("/messages/media", h.sendMedia)
+	r.Post("/messages/upload", h.uploadMedia)
 	r.Get("/media/:id", h.getMedia)
 	r.Get("/messages", h.listMessages)
 	r.Get("/conversations", h.listConversations)
@@ -213,6 +216,55 @@ func (h *Handler) sendMedia(c *fiber.Ctx) error {
 	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
+}
+
+// uploadMedia recebe um arquivo (multipart "file"), sobe pra Meta e envia.
+func (h *Handler) uploadMedia(c *fiber.Ctx) error {
+	to := c.FormValue("to")
+	caption := c.FormValue("caption")
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "arquivo é obrigatório (campo 'file')"})
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	mime := fh.Header.Get("Content-Type")
+	kind := mediaKind(mime)
+
+	msg, err := h.svc.SendMediaUpload(c.Context(), to, kind, data, fh.Filename, mime, h.assina(c, caption))
+	if errors.Is(err, ErrWindowClosed) {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error(), "window_closed": true})
+	}
+	if errors.Is(err, ErrOptedOut) {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	if err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
+	}
+	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
+	h.tag(c, msg.ConversationID)
+	return c.Status(fiber.StatusCreated).JSON(msg)
+}
+
+// mediaKind mapeia o mime para o tipo aceito pela Meta (image/audio/video/document).
+func mediaKind(mime string) string {
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		return "image"
+	case strings.HasPrefix(mime, "audio/"):
+		return "audio"
+	case strings.HasPrefix(mime, "video/"):
+		return "video"
+	default:
+		return "document"
+	}
 }
 
 // getMedia baixa a mídia da Meta e devolve os bytes (proxy autenticado).

@@ -214,6 +214,38 @@ func (s *Service) SendMedia(ctx context.Context, to, kind, link, caption, name s
 	return s.repo.InsertOutboundMedia(ctx, convID, res.WAMessageID, caption, kind, name)
 }
 
+// SendMediaUpload sobe um arquivo pra Meta e envia por media_id (upload direto,
+// sem precisar de URL pública). Persiste no histórico.
+func (s *Service) SendMediaUpload(ctx context.Context, to, kind string, data []byte, filename, mime, caption string) (*Message, error) {
+	if to == "" || len(data) == 0 {
+		return nil, fmt.Errorf("destinatário e arquivo são obrigatórios")
+	}
+	if out, _ := s.repo.ConversationOptedOut(ctx, to); out {
+		return nil, ErrOptedOut
+	}
+	if open, _ := s.repo.WindowOpen(ctx, to); !open {
+		return nil, ErrWindowClosed
+	}
+	prov := s.providerFor(ctx)
+	id, err := prov.UploadMedia(ctx, data, filename, mime)
+	if err != nil {
+		return nil, fmt.Errorf("upload da mídia falhou: %w", err)
+	}
+	res, err := prov.SendMedia(ctx, OutgoingMedia{To: to, Kind: kind, ID: id, Caption: caption, Name: filename})
+	if err != nil {
+		return nil, fmt.Errorf("envio de mídia falhou: %w", err)
+	}
+	convID, err := s.repo.EnsureConversation(ctx, to, "")
+	if err != nil {
+		return nil, err
+	}
+	m, err := s.repo.InsertOutboundMedia(ctx, convID, res.WAMessageID, caption, kind, filename)
+	if err == nil {
+		s.emit(ctx, convID, "message")
+	}
+	return m, err
+}
+
 // DownloadMedia baixa os bytes de uma mídia (proxy para exibir no front).
 func (s *Service) DownloadMedia(ctx context.Context, mediaID string) ([]byte, string, error) {
 	return s.providerFor(ctx).DownloadMedia(ctx, mediaID)
