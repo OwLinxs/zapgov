@@ -3,7 +3,11 @@ package messaging
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -269,6 +273,17 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	mime := fh.Header.Get("Content-Type")
+
+	// Áudio gravado no navegador (webm/opus) não é aceito pela Meta →
+	// converte pra ogg/opus mono via ffmpeg.
+	if strings.HasPrefix(mime, "audio/webm") {
+		if conv, err := webmToOgg(c.Context(), data); err == nil {
+			data, mime = conv, "audio/ogg"
+			fh.Filename = strings.TrimSuffix(fh.Filename, ".webm") + ".ogg"
+		} else {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "conversão de áudio falhou: " + err.Error()})
+		}
+	}
 	kind := mediaKind(mime)
 
 	msg, err := h.svc.SendMediaUpload(c.Context(), to, kind, data, fh.Filename, mime, h.assina(c, caption))
@@ -285,6 +300,38 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
+}
+
+// webmToOgg converte áudio webm/opus (gravação do navegador) para ogg/opus
+// mono — formato de voz aceito pela Meta. Requer ffmpeg na imagem.
+func webmToOgg(ctx context.Context, in []byte) ([]byte, error) {
+	dir, err := os.MkdirTemp("", "zg-audio-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+
+	src := filepath.Join(dir, "in.webm")
+	dst := filepath.Join(dir, "out.ogg")
+	if err := os.WriteFile(src, in, 0o600); err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", src, "-vn", "-c:a", "libopus", "-ac", "1", "-b:a", "32k", "-y", dst)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("ffmpeg: %v (%s)", err, lastLine(out))
+	}
+	return os.ReadFile(dst)
+}
+
+func lastLine(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if i := strings.LastIndexByte(s, '\n'); i >= 0 {
+		s = s[i+1:]
+	}
+	if len(s) > 160 {
+		s = s[:160]
+	}
+	return s
 }
 
 // mediaKind mapeia o mime para o tipo aceito pela Meta (image/audio/video/document).

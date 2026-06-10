@@ -125,9 +125,48 @@ function FailNote({ m }: { m: ApiMessage }) {
   );
 }
 
+// Lightbox: imagem ampliada em overlay (clique fora fecha; Esc fecha).
+function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.82)",
+        display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt="Imagem"
+        style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 8, boxShadow: "0 10px 40px rgba(0,0,0,.5)" }}
+        onClick={(e) => e.stopPropagation()}
+      />
+      <a
+        href={url}
+        download="imagem"
+        onClick={(e) => e.stopPropagation()}
+        className="btn btn-secondary btn-sm"
+        style={{ position: "fixed", top: 18, right: 56 }}
+      >
+        <Icon name="download" size={15} /> Baixar
+      </a>
+      <button className="btn btn-secondary btn-icon btn-sm" style={{ position: "fixed", top: 18, right: 18 }} onClick={onClose}>
+        <Icon name="x" size={15} />
+      </button>
+    </div>
+  );
+}
+
 function MediaBubble({ m }: { m: ApiMessage }) {
   const [url, setUrl] = useState<string | null>(null);
   const [erro, setErro] = useState(false);
+  const [zoom, setZoom] = useState(false);
 
   const isImg = m.media_type === "image" || m.media_type === "sticker";
   const isAudio = m.media_type === "audio";
@@ -168,8 +207,17 @@ function MediaBubble({ m }: { m: ApiMessage }) {
         ) : !url ? (
           <div className="muted" style={{ fontSize: 12, padding: "6px 0" }}>Carregando {labelTipo[m.media_type]?.toLowerCase()}…</div>
         ) : isImg ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={labelTipo[m.media_type]} style={{ maxWidth: "100%", borderRadius: 6, display: "block" }} />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt={labelTipo[m.media_type]}
+              style={{ maxWidth: "100%", borderRadius: 6, display: "block", cursor: "zoom-in" }}
+              onClick={() => setZoom(true)}
+              title="Clique para ampliar"
+            />
+            {zoom && <Lightbox url={url} onClose={() => setZoom(false)} />}
+          </>
         ) : isAudio ? (
           <audio controls src={url} style={{ width: 220 }} />
         ) : isVideo ? (

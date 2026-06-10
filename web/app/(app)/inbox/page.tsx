@@ -438,6 +438,13 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [notaMode, setNotaMode] = useState(false);
   const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
+  // Gravação de áudio (MediaRecorder).
+  const [gravando, setGravando] = useState(false);
+  const [recSeg, setRecSeg] = useState(0);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const recChunks = useRef<Blob[]>([]);
+  const recCancel = useRef(false);
+  const recTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [finBusca, setFinBusca] = useState<ApiConversation[]>([]); // busca server-side em Finalizados
   const [novaOpen, setNovaOpen] = useState(false);
   const [midiaOpen, setMidiaOpen] = useState(false);
@@ -553,6 +560,52 @@ export default function InboxPage() {
     } catch (e) {
       toast({ type: "error", title: "Erro", message: (e as Error).message });
     }
+  }
+
+  // ---- Gravação de áudio (envia como mensagem de voz) ----
+  async function iniciarGravacao() {
+    if (!active) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Preferência: ogg/opus (Firefox, aceito direto) > mp4 (Safari) > webm (Chrome; backend converte).
+      const cand = ["audio/ogg;codecs=opus", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+      const mime = cand.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recChunks.current = [];
+      recCancel.current = false;
+      rec.ondataavailable = (e) => e.data.size > 0 && recChunks.current.push(e.data);
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (recTimer.current) clearInterval(recTimer.current);
+        setGravando(false);
+        if (recCancel.current || recChunks.current.length === 0 || !active) return;
+        const tipo = rec.mimeType || "audio/webm";
+        const ext = tipo.includes("ogg") ? "ogg" : tipo.includes("mp4") ? "m4a" : "webm";
+        const blob = new Blob(recChunks.current, { type: tipo.split(";")[0] });
+        const file = new File([blob], `audio.${ext}`, { type: tipo.split(";")[0] });
+        setSending(true);
+        try {
+          await uploadMedia(active.contact_phone, file);
+          await loadMsgs(active.id);
+          loadConvs();
+        } catch (e) {
+          toast({ type: "error", title: "Falha ao enviar áudio", message: (e as Error).message });
+        } finally {
+          setSending(false);
+        }
+      };
+      recRef.current = rec;
+      rec.start();
+      setRecSeg(0);
+      setGravando(true);
+      recTimer.current = setInterval(() => setRecSeg((s) => s + 1), 1000);
+    } catch {
+      toast({ type: "error", title: "Microfone indisponível", message: "Permita o acesso ao microfone no navegador." });
+    }
+  }
+  function pararGravacao(cancelar: boolean) {
+    recCancel.current = cancelar;
+    recRef.current?.stop();
   }
 
   async function reagir(waId: string, emoji: string) {
@@ -956,6 +1009,19 @@ export default function InboxPage() {
               </div>
             ) : (
               <>
+                {gravando ? (
+                  <div className="row center" style={{ gap: 12, height: 42 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 99, background: "var(--st-failed)", animation: "pulse 1s infinite" }} />
+                    <span className="mono strong" style={{ fontSize: 14 }}>
+                      {String(Math.floor(recSeg / 60)).padStart(2, "0")}:{String(recSeg % 60).padStart(2, "0")}
+                    </span>
+                    <span className="muted grow" style={{ fontSize: 12.5 }}>Gravando áudio…</span>
+                    <Button variant="ghost" size="sm" onClick={() => pararGravacao(true)}>Cancelar</Button>
+                    <Button variant="wa" style={{ height: 42, width: 42, padding: 0 }} onClick={() => pararGravacao(false)} title="Enviar áudio">
+                      <Icon name="send" size={18} />
+                    </Button>
+                  </div>
+                ) : (
                 <div className="row center" style={{ gap: 9 }}>
                   <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Enviar mídia" onClick={() => setMidiaOpen(true)}>
                     <Icon name="attach" size={18} />
@@ -998,10 +1064,16 @@ export default function InboxPage() {
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && enviar()}
                   />
+                  {!notaMode && !draft.trim() && (
+                    <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Gravar áudio" onClick={iniciarGravacao}>
+                      <Icon name="mic" size={18} />
+                    </button>
+                  )}
                   <Button variant={notaMode ? "secondary" : "wa"} style={{ height: 42, width: 42, padding: 0 }} aria-disabled={sending} onClick={enviar}>
                     <Icon name={notaMode ? "edit" : "send"} size={18} />
                   </Button>
                 </div>
+                )}
                 <div className="row center" style={{ gap: 6, marginTop: 8, fontSize: 11, color: notaMode ? "var(--st-pending)" : "var(--text-faint)" }}>
                   <Icon name="info" size={12} />
                   {notaMode ? "Modo nota: salva só pra equipe, não envia ao cidadão." : "Resposta livre só dentro da janela de 24h (regra da Meta)."}

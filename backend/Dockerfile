@@ -9,7 +9,8 @@ RUN CGO_ENABLED=0 go build -o /bin/server ./cmd/server && \
 
 # --- runtime ---
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+# ffmpeg: converte audio gravado no navegador (webm) p/ ogg aceito pela Meta.
+RUN apk add --no-cache ca-certificates ffmpeg
 COPY --from=build /bin/server /bin/server
 COPY --from=build /bin/worker /bin/worker
 EXPOSE 8080
