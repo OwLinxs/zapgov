@@ -56,6 +56,8 @@ export default function DisparoPage() {
   const [modo, setModo] = useState<"comunicado" | "personalizado">("comunicado");
   // Variáveis por contato (modo personalizado): contactId -> { "1": "...", ... }
   const [recVars, setRecVars] = useState<Record<number, Record<string, string>>>({});
+  // Valor "aplicar a todos" por coluna (atalho da tabela).
+  const [colFill, setColFill] = useState<Record<string, string>>({});
   const csvRef = useRef<HTMLInputElement>(null);
 
   // Só templates APROVADOS podem ser disparados em massa (regra da Meta).
@@ -98,6 +100,19 @@ export default function DisparoPage() {
     recVars[c.id]?.[n] ?? (n === "1" ? c.nome.split(" ")[0] : "");
   const setVarDe = (id: number, n: string, v: string) =>
     setRecVars((rv) => ({ ...rv, [id]: { ...(rv[id] || {}), [n]: v } }));
+
+  // Aplica um valor à coluna inteira (todos os selecionados).
+  function aplicarColuna(n: string) {
+    const v = (colFill[n] || "").trim();
+    if (!v) return;
+    setRecVars((rv) => {
+      const novo = { ...rv };
+      for (const c of selContatos) {
+        novo[c.id] = { ...(novo[c.id] || {}), [n]: v };
+      }
+      return novo;
+    });
+  }
 
   // Validação: personalizado exige todas as variáveis de todos os selecionados.
   const personalizadoOk =
@@ -524,11 +539,34 @@ export default function DisparoPage() {
                       <thead>
                         <tr>
                           <th>Contato</th>
-                          {Array.from({ length: nVars }).map((_, i) => (
-                            <th key={i}>
-                              <span className="wa-var">{"{{" + (i + 1) + "}}"}</span>
-                            </th>
-                          ))}
+                          {Array.from({ length: nVars }).map((_, i) => {
+                            const n = String(i + 1);
+                            return (
+                              <th key={n}>
+                                <div className="col" style={{ gap: 5 }}>
+                                  <span className="wa-var">{"{{" + n + "}}"}</span>
+                                  <div className="row center" style={{ gap: 4 }}>
+                                    <input
+                                      className="input"
+                                      style={{ height: 28, fontSize: 11.5, minWidth: 100 }}
+                                      placeholder="valor p/ todos…"
+                                      value={colFill[n] || ""}
+                                      onChange={(e) => setColFill((cf) => ({ ...cf, [n]: e.target.value }))}
+                                      onKeyDown={(e) => e.key === "Enter" && aplicarColuna(n)}
+                                    />
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ height: 28, fontSize: 11, whiteSpace: "nowrap" }}
+                                      title="Aplicar este valor a todos os selecionados"
+                                      onClick={() => aplicarColuna(n)}
+                                    >
+                                      ↓ todos
+                                    </button>
+                                  </div>
+                                </div>
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody>
