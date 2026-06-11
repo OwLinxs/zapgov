@@ -15,10 +15,10 @@ import {
   useToast,
 } from "@/components/ui";
 import { SETORES, SETOR_COR } from "@/lib/data";
-import { listCampaigns, exportCampaignsCSV, type ApiCampaign } from "@/lib/api";
+import { listCampaigns, exportCampaignsCSV, cancelCampaign, type ApiCampaign } from "@/lib/api";
 import { IconName } from "@/lib/icons";
 
-const STATUS_OPTS = ["Todos", "enviado", "enviando", "agendado", "falhou"];
+const STATUS_OPTS = ["Todos", "enviado", "enviando", "agendado", "cancelado", "falhou"];
 
 // status de campanha → status visual do StatusBadge
 function vis(s: string): string {
@@ -69,6 +69,16 @@ export default function HistoricoPage() {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [load]);
+
+  async function cancelarAgendado(id: number) {
+    try {
+      await cancelCampaign(id);
+      toast({ type: "success", title: "Agendamento cancelado" });
+      load();
+    } catch (e) {
+      toast({ type: "error", title: "Erro ao cancelar", message: (e as Error).message });
+    }
+  }
 
   async function exportar() {
     try {
@@ -255,6 +265,16 @@ export default function HistoricoPage() {
                                     </div>
                                   ))}
                                   <Donut value={d.enviadas ? (d.entregues / d.enviadas) * 100 : 0} size={72} stroke={8} color="var(--st-read)" label="entrega" />
+                                  {d.status === "agendado" && (
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      icon="ban"
+                                      onClick={(e) => { e.stopPropagation(); cancelarAgendado(d.id); }}
+                                    >
+                                      Cancelar agendamento
+                                    </Button>
+                                  )}
                                 </div>
                               </td>
                             </tr>

@@ -293,6 +293,7 @@ export interface ApiCampaign {
   falhas: number;
   status: string;
   operador: string;
+  personalizado: boolean;
   scheduled_at: string | null;
   criado_em: string;
 }
@@ -301,6 +302,8 @@ export async function listCampaigns(): Promise<ApiCampaign[]> {
   const data = await get<{ campaigns: ApiCampaign[] }>("/campaigns");
   return data.campaigns ?? [];
 }
+
+export const cancelCampaign = (id: number) => post(`/campaigns/${id}/cancel`, {});
 
 // Baixa o histórico de disparos como CSV (com auth) e dispara o download.
 export async function exportCampaignsCSV(): Promise<void> {
@@ -315,14 +318,22 @@ export async function exportCampaignsCSV(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export interface CampaignRecipient {
+  phone: string;
+  nome: string;
+  params: string[];
+}
+
 export async function createCampaign(input: {
   template: string;
   language: string;
+  body?: string; // corpo cru do template (preview por destinatário)
   params?: string[];
   setor?: string;
   operador?: string;
-  preview?: string;
-  phones: string[];
+  phones?: string[];
+  recipients?: CampaignRecipient[]; // modo personalizado
+  scheduled_at?: string; // RFC3339; ausente = agora
 }): Promise<ApiCampaign> {
   const res = await fetch(BASE + "/campaigns", {
     method: "POST",

@@ -16,7 +16,8 @@ import {
   useToast,
 } from "@/components/ui";
 import { SETORES, SETOR_COR, TENANT } from "@/lib/data";
-import { listTemplates, listContacts, createCampaign, type ApiTemplate, type ApiContact } from "@/lib/api";
+import { listTemplates, listContacts, createCampaign, type ApiTemplate, type ApiContact, type CampaignRecipient } from "@/lib/api";
+import { useRef } from "react";
 
 const CUSTO_UNIT = 0.04;
 const ALL_TAGS = ["Todas", "VIP", "Optin", "Idoso", "Empresa"];
@@ -44,10 +45,18 @@ export default function DisparoPage() {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Set<number>>(() => new Set());
   const [quando, setQuando] = useState("agora");
-  const [data, setData] = useState("2026-06-05");
+  const [data, setData] = useState(() => {
+    const d = new Date(Date.now() + 24 * 3600 * 1000);
+    return d.toISOString().slice(0, 10); // amanhã por padrão
+  });
   const [hora, setHora] = useState("09:00");
   const [confirm, setConfirm] = useState(false);
   const [disparando, setDisparando] = useState(false);
+  // Modo: comunicado (mesmo texto p/ todos) ou personalizado (vars por contato).
+  const [modo, setModo] = useState<"comunicado" | "personalizado">("comunicado");
+  // Variáveis por contato (modo personalizado): contactId -> { "1": "...", ... }
+  const [recVars, setRecVars] = useState<Record<number, Record<string, string>>>({});
+  const csvRef = useRef<HTMLInputElement>(null);
 
   // Só templates APROVADOS podem ser disparados em massa (regra da Meta).
   useEffect(() => {
@@ -81,30 +90,101 @@ export default function DisparoPage() {
     { n: 2, l: "Destinatários" },
     { n: 3, l: "Revisar e enviar" },
   ];
-  const podeAvancar = step === 1 ? !!tpl : step === 2 ? sel.size > 0 : true;
+  const nVars = tpl?.variables || 0;
+  const selContatos = contatos.filter((c) => sel.has(c.id));
+
+  // Personalizado: valor da variável de um contato ({{1}} default = 1º nome).
+  const varDe = (c: ApiContact, n: string) =>
+    recVars[c.id]?.[n] ?? (n === "1" ? c.nome.split(" ")[0] : "");
+  const setVarDe = (id: number, n: string, v: string) =>
+    setRecVars((rv) => ({ ...rv, [id]: { ...(rv[id] || {}), [n]: v } }));
+
+  // Validação: personalizado exige todas as variáveis de todos os selecionados.
+  const personalizadoOk =
+    modo !== "personalizado" ||
+    selContatos.every((c) => Array.from({ length: nVars }, (_, i) => varDe(c, String(i + 1)).trim()).every(Boolean));
+
+  const podeAvancar = step === 1 ? !!tpl : step === 2 ? sel.size > 0 && personalizadoOk : true;
   const custoTotal = sel.size * CUSTO_UNIT;
+
+  // Quantos lembretes de véspera serão criados (datas nas variáveis).
+  const dataRe = /\b\d{2}\/\d{2}\/\d{4}\b/;
+  const lembretes =
+    modo === "personalizado"
+      ? selContatos.filter((c) => Array.from({ length: nVars }, (_, i) => varDe(c, String(i + 1))).some((v) => dataRe.test(v))).length
+      : 0;
+
+  // Importa CSV de variáveis: telefone;var1;var2... (casa por dígitos do telefone).
+  function importarCSV(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const linhas = String(reader.result || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const porTel = new Map(contatos.map((c) => [c.telefone.replace(/\D/g, ""), c]));
+      let casados = 0;
+      const novo: Record<number, Record<string, string>> = {};
+      const selNovo = new Set(sel);
+      for (const linha of linhas) {
+        const cols = linha.split(/[;,\t]/).map((s) => s.trim());
+        const tel = (cols[0] || "").replace(/\D/g, "");
+        if (!tel) continue;
+        const c = porTel.get(tel) || porTel.get("55" + tel);
+        if (!c) continue;
+        const vs: Record<string, string> = {};
+        for (let i = 1; i <= nVars; i++) vs[String(i)] = cols[i] || "";
+        novo[c.id] = vs;
+        selNovo.add(c.id);
+        casados++;
+      }
+      setRecVars((rv) => ({ ...rv, ...novo }));
+      setSel(selNovo);
+      toast({
+        type: casados > 0 ? "success" : "error",
+        title: `CSV: ${casados} de ${linhas.length} linhas casadas`,
+        message: casados < linhas.length ? "Linhas sem contato correspondente foram ignoradas." : undefined,
+      });
+    };
+    reader.readAsText(file);
+  }
 
   const confirmar = async () => {
     if (!tpl) return;
     setDisparando(true);
-    const phones = contatos.filter((c) => sel.has(c.id)).map((c) => c.telefone);
     try {
+      const scheduled_at =
+        quando === "agendar" ? new Date(`${data}T${hora}:00`).toISOString() : undefined;
+
+      let recipients: CampaignRecipient[] | undefined;
+      let phones: string[] | undefined;
+      let params: string[] | undefined;
+      if (modo === "personalizado") {
+        recipients = selContatos.map((c) => ({
+          phone: c.telefone,
+          nome: c.nome,
+          params: Array.from({ length: nVars }, (_, i) => varDe(c, String(i + 1))),
+        }));
+      } else {
+        phones = selContatos.map((c) => c.telefone);
+        params = Array.from({ length: nVars }, (_, i) => vars[String(i + 1)] || "");
+      }
+
       const camp = await createCampaign({
         template: tpl.name,
         language: tpl.language,
-        params: Object.keys(vars)
-          .sort()
-          .map((k) => vars[k]),
+        body: tpl.body,
+        params,
         setor: selSetor === "Todos" ? "Geral" : selSetor,
         operador: TENANT.operador.nome,
-        preview: corpoPreenchido,
         phones,
+        recipients,
+        scheduled_at,
       });
       setConfirm(false);
       toast({
         type: "success",
-        title: "Disparo enfileirado",
-        message: `${camp.total} mensagens na fila — acompanhe o progresso no histórico`,
+        title: scheduled_at ? "Disparo agendado" : "Disparo enfileirado",
+        message: scheduled_at
+          ? `${camp.total} mensagens agendadas — cancele no histórico se precisar`
+          : `${camp.total} mensagens na fila — acompanhe o progresso no histórico`,
       });
       router.push("/historico");
     } catch (e) {
@@ -140,6 +220,32 @@ export default function DisparoPage() {
           {step === 1 && (
             <div className="grid-2 fade-in" style={{ gridTemplateColumns: "1.4fr 1fr", alignItems: "start" }}>
               <div className="col" style={{ gap: 16 }}>
+                {/* Modo do disparo */}
+                <div className="card card-pad">
+                  <div className="row" style={{ gap: 10 }}>
+                    {([
+                      ["comunicado", "send", "Comunicado", "Mesmo texto para todos (vacinação, avisos…)"],
+                      ["personalizado", "users", "Personalizado", "Variáveis por contato (consultas, cobranças…) + lembrete"],
+                    ] as [typeof modo, string, string, string][]).map(([m, ic, titulo, sub]) => (
+                      <button
+                        key={m}
+                        onClick={() => setModo(m)}
+                        style={{
+                          flex: 1, padding: 14, borderRadius: 9, cursor: "pointer", textAlign: "left",
+                          border: "1px solid " + (modo === m ? "var(--brand)" : "var(--border)"),
+                          background: modo === m ? "var(--brand-soft)" : "var(--bg-sunken)",
+                        }}
+                      >
+                        <div className="row center" style={{ gap: 9 }}>
+                          <Icon name={ic as never} size={17} style={{ color: modo === m ? "var(--brand-text)" : "var(--text-tertiary)" }} />
+                          <span className="strong" style={{ fontSize: 13.5 }}>{titulo}</span>
+                        </div>
+                        <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>{sub}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="card">
                   <div className="card-head">
                     <div className="card-title">Selecione um template aprovado</div>
@@ -195,7 +301,14 @@ export default function DisparoPage() {
                     )}
                   </div>
                 </div>
-                {tpl && tpl.variables > 0 && (
+                {tpl && tpl.variables > 0 && modo === "personalizado" && (
+                  <div className="card card-pad" style={{ background: "var(--brand-soft)", fontSize: 12.5, color: "var(--text-secondary)" }}>
+                    <Icon name="info" size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+                    No modo personalizado, as variáveis são preenchidas <b>por contato</b> no próximo passo
+                    (ou via importação de CSV).
+                  </div>
+                )}
+                {tpl && tpl.variables > 0 && modo === "comunicado" && (
                   <div className="card">
                     <div className="card-head">
                       <div className="card-title">Preencher variáveis dinâmicas</div>
@@ -284,9 +397,24 @@ export default function DisparoPage() {
                     ))}
                   </select>
                   <div className="grow" />
-                  <Button variant="secondary" icon="upload">
-                    Importar CSV
-                  </Button>
+                  {modo === "personalizado" && (
+                    <>
+                      <input
+                        ref={csvRef}
+                        type="file"
+                        accept=".csv,text/csv"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (f) importarCSV(f);
+                        }}
+                      />
+                      <Button variant="secondary" icon="upload" onClick={() => csvRef.current?.click()}>
+                        Importar CSV de variáveis
+                      </Button>
+                    </>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setSel(new Set(filtrados.map((c) => c.id)))}>
                     Selecionar todos ({filtrados.length})
                   </Button>
@@ -378,6 +506,67 @@ export default function DisparoPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Variáveis por destinatário (modo personalizado) */}
+              {modo === "personalizado" && sel.size > 0 && tpl && nVars > 0 && (
+                <div className="card">
+                  <div className="card-head">
+                    <div>
+                      <div className="card-title">Variáveis por destinatário</div>
+                      <div className="card-sub">
+                        Preencha cada coluna — ou importe um CSV: <span className="mono">telefone;var1;var2…</span>
+                      </div>
+                    </div>
+                    {!personalizadoOk && <span className="badge badge-pending">faltam campos</span>}
+                  </div>
+                  <div style={{ maxHeight: 360, overflowY: "auto" }}>
+                    <table className="ds-table">
+                      <thead>
+                        <tr>
+                          <th>Contato</th>
+                          {Array.from({ length: nVars }).map((_, i) => (
+                            <th key={i}>
+                              <span className="wa-var">{"{{" + (i + 1) + "}}"}</span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selContatos.map((c) => (
+                          <tr key={c.id}>
+                            <td className="strong" style={{ whiteSpace: "nowrap" }}>
+                              <div className="col" style={{ gap: 0 }}>
+                                <span style={{ fontSize: 12.5 }}>{c.nome}</span>
+                                <span className="mono faint" style={{ fontSize: 10.5 }}>{c.telefone}</span>
+                              </div>
+                            </td>
+                            {Array.from({ length: nVars }).map((_, i) => {
+                              const n = String(i + 1);
+                              const v = varDe(c, n);
+                              return (
+                                <td key={n}>
+                                  <input
+                                    className="input"
+                                    style={{ height: 32, fontSize: 12.5, minWidth: 120, borderColor: v.trim() ? undefined : "var(--st-pending)" }}
+                                    value={v}
+                                    placeholder={n === "1" ? "Nome" : "Valor"}
+                                    onChange={(e) => setVarDe(c.id, n, e.target.value)}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {lembretes > 0 && (
+                    <div className="row center" style={{ gap: 7, padding: "10px 16px", borderTop: "1px solid var(--border-subtle)", fontSize: 12, color: "var(--brand-text)" }}>
+                      <Icon name="calendar" size={14} /> {lembretes} lembrete(s) de véspera serão agendados (datas detectadas nas variáveis).
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -433,8 +622,10 @@ export default function DisparoPage() {
                   <div className="card-title">Resumo final</div>
                   {(
                     [
+                      ["Modo", modo === "personalizado" ? "Personalizado (vars por contato)" : "Comunicado"],
                       ["Template", tpl ? tpl.name : "—"],
                       ["Destinatários", sel.size.toLocaleString("pt-BR") + " contatos"],
+                      ...(lembretes > 0 ? [["Lembretes de véspera", String(lembretes)]] : []),
                       ["Custo estimado", brl(custoTotal)],
                       ["Operador", TENANT.operador.nome],
                       ["Envio", quando === "agora" ? "Imediato" : data.split("-").reverse().join("/") + " às " + hora],
