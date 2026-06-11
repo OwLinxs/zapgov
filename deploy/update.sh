@@ -8,6 +8,10 @@ cd "$ROOT"
 # shellcheck disable=SC1091
 source .env
 : "${API_URL:?defina API_URL no .env}"
+case "$API_URL" in
+  https://*|http://*) ;;
+  *) echo "ERRO: API_URL inválida ('$API_URL') — precisa começar com https:// (confira o ':')"; exit 1 ;;
+esac
 
 BACKUP_DIR="${BACKUP_DIR:-/backup}"
 mkdir -p "$BACKUP_DIR"

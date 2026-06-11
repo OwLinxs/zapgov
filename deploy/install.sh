@@ -13,6 +13,10 @@ cd "$ROOT"
 # shellcheck disable=SC1091
 source .env
 : "${API_URL:?defina API_URL no .env (ex.: https://api.SEU-DOMINIO)}"
+case "$API_URL" in
+  https://*|http://*) ;;
+  *) echo "ERRO: API_URL inválida ('$API_URL') — precisa começar com https:// (confira o ':')"; exit 1 ;;
+esac
 
 echo "==> Subindo backend (Docker) + migrações"
 docker compose -f docker-compose.prod.yml up -d --build
