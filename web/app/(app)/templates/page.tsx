@@ -16,7 +16,11 @@ import {
   WaBubble,
   useToast,
 } from "@/components/ui";
-import { listTemplates, createTemplate, listDepartments, setTemplateSetores, type ApiTemplate, type ApiDepartment } from "@/lib/api";
+import {
+  listTemplates, createTemplate, listDepartments, setTemplateSetores,
+  listTemplateGroups, createTemplateGroup, deleteTemplateGroup, setTemplateGroup,
+  type ApiTemplate, type ApiDepartment, type ApiTemplateGroup,
+} from "@/lib/api";
 import { SETOR_COR } from "@/lib/data";
 
 const CAT_CODE: Record<string, string> = { Utilidade: "UTILITY", Marketing: "MARKETING", Autenticação: "AUTHENTICATION" };
@@ -143,21 +147,85 @@ function NovoTemplateModal({ open, onClose, onCreated }: { open: boolean; onClos
   );
 }
 
+// Gerência de grupos de templates (ex.: uma secretaria por grupo). Admin.
+function GruposModal({ open, groups, onClose, onChanged }: { open: boolean; groups: ApiTemplateGroup[]; onClose: () => void; onChanged: () => void }) {
+  const toast = useToast();
+  const [nome, setNome] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function criar() {
+    if (!nome.trim()) return;
+    setSaving(true);
+    try {
+      await createTemplateGroup(nome.trim());
+      setNome("");
+      onChanged();
+    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    finally { setSaving(false); }
+  }
+  async function remover(id: number) {
+    try {
+      await deleteTemplateGroup(id);
+      onChanged();
+    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} width={440}>
+      <div className="modal-head">
+        <div className="modal-title">Grupos de templates</div>
+        <div className="modal-sub">Organize por secretaria (ex.: Saúde, Educação). Excluir um grupo não apaga os templates.</div>
+      </div>
+      <div className="modal-body col" style={{ gap: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do grupo (ex.: Secretaria de Saúde)" onKeyDown={(e) => e.key === "Enter" && criar()} />
+          <Button variant="primary" icon="plus" aria-disabled={saving || !nome.trim()} onClick={criar}>Criar</Button>
+        </div>
+        {groups.length === 0 ? (
+          <span className="muted" style={{ fontSize: 12.5 }}>Nenhum grupo ainda.</span>
+        ) : (
+          groups.map((g) => (
+            <div key={g.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8 }}>
+              <span className="row center" style={{ gap: 8, fontSize: 13 }}>
+                <Icon name="layers" size={14} /> {g.nome}
+              </span>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Excluir grupo" onClick={() => remover(g.id)}>
+                <Icon name="trash" size={13} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="modal-foot">
+        <Button variant="primary" className="btn-block" onClick={onClose}>Fechar</Button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function TemplatesPage() {
   const toast = useToast();
   const [tab, setTab] = useState("todos");
   const [novo, setNovo] = useState(false);
   const [tpls, setTpls] = useState<ApiTemplate[]>([]);
   const [deps, setDeps] = useState<ApiDepartment[]>([]);
+  const [groups, setGroups] = useState<ApiTemplateGroup[]>([]);
+  const [grupoFiltro, setGrupoFiltro] = useState("Todos");
+  const [gruposOpen, setGruposOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ts, ds] = await Promise.all([listTemplates(), listDepartments().catch(() => [])]);
+      const [ts, ds, gs] = await Promise.all([
+        listTemplates(),
+        listDepartments().catch(() => []),
+        listTemplateGroups().catch(() => []),
+      ]);
       setTpls(ts);
       setDeps(ds);
+      setGroups(gs);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -165,6 +233,16 @@ export default function TemplatesPage() {
       setLoading(false);
     }
   }, []);
+
+  async function moverGrupo(t: ApiTemplate, groupId: number, nome: string) {
+    setTpls((ts) => ts.map((x) => (x.name === t.name ? { ...x, grupo: nome } : x))); // otimista
+    try {
+      await setTemplateGroup(t.name, groupId);
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      load();
+    }
+  }
 
   useEffect(() => {
     load();
@@ -189,7 +267,23 @@ export default function TemplatesPage() {
     pendente: tpls.filter((t) => t.status === "pendente").length,
     rejeitado: tpls.filter((t) => t.status === "rejeitado").length,
   };
-  const rows = tpls.filter((t) => tab === "todos" || t.status === tab);
+  const rows = tpls.filter(
+    (t) =>
+      (tab === "todos" || t.status === tab) &&
+      (grupoFiltro === "Todos" || (grupoFiltro === "— sem grupo —" ? !t.grupo : t.grupo === grupoFiltro)),
+  );
+
+  // Seções por grupo (quando o filtro é "Todos" e há grupos definidos).
+  const secoes: [string, ApiTemplate[]][] = (() => {
+    if (grupoFiltro !== "Todos" || groups.length === 0) return [["", rows]];
+    const por: Record<string, ApiTemplate[]> = {};
+    for (const t of rows) {
+      const g = t.grupo || "— sem grupo —";
+      (por[g] = por[g] || []).push(t);
+    }
+    const nomes = [...groups.map((g) => g.nome).filter((n) => por[n]), ...(por["— sem grupo —"] ? ["— sem grupo —"] : [])];
+    return nomes.map((n) => [n, por[n]]);
+  })();
 
   return (
     <>
@@ -209,16 +303,29 @@ export default function TemplatesPage() {
       />
       <div className="content">
         <div className="content-pad col" style={{ gap: 16 }}>
-          <Tabs
-            value={tab}
-            onChange={setTab}
-            tabs={[
-              { id: "todos", label: "Todos", count: counts.todos },
-              { id: "aprovado", label: "Aprovados", count: counts.aprovado },
-              { id: "pendente", label: "Pendentes", count: counts.pendente },
-              { id: "rejeitado", label: "Rejeitados", count: counts.rejeitado },
-            ]}
-          />
+          <div className="row center" style={{ gap: 10, flexWrap: "wrap" }}>
+            <Tabs
+              value={tab}
+              onChange={setTab}
+              tabs={[
+                { id: "todos", label: "Todos", count: counts.todos },
+                { id: "aprovado", label: "Aprovados", count: counts.aprovado },
+                { id: "pendente", label: "Pendentes", count: counts.pendente },
+                { id: "rejeitado", label: "Rejeitados", count: counts.rejeitado },
+              ]}
+            />
+            <div className="grow" />
+            {groups.length > 0 && (
+              <select className="select" style={{ width: "auto" }} value={grupoFiltro} onChange={(e) => setGrupoFiltro(e.target.value)}>
+                <option>Todos</option>
+                {groups.map((g) => <option key={g.id}>{g.nome}</option>)}
+                <option>— sem grupo —</option>
+              </select>
+            )}
+            <Button variant="secondary" size="sm" icon="layers" onClick={() => setGruposOpen(true)}>
+              Grupos
+            </Button>
+          </div>
 
           {erro ? (
             <div className="card">
@@ -239,8 +346,17 @@ export default function TemplatesPage() {
               <EmptyState icon="template" title="Nenhum template" sub="Crie um template no Gerenciador da Meta e sincronize aqui." />
             </div>
           ) : (
+            secoes.map(([nomeSecao, items]) => (
+            <div key={nomeSecao || "unica"} className="col" style={{ gap: 10 }}>
+              {nomeSecao && (
+                <div className="row center" style={{ gap: 8 }}>
+                  <Icon name="layers" size={15} style={{ color: "var(--brand-text)" }} />
+                  <span className="strong" style={{ fontSize: 13.5 }}>{nomeSecao}</span>
+                  <span className="badge badge-neutral">{items.length}</span>
+                </div>
+              )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
-              {rows.map((t) => (
+              {items.map((t) => (
                 <div key={t.name + t.language} className="card" style={{ display: "flex", flexDirection: "column" }}>
                   <div className="card-pad col" style={{ gap: 12, flex: 1 }}>
                     <div className="row between" style={{ alignItems: "flex-start" }}>
@@ -326,15 +442,36 @@ export default function TemplatesPage() {
                       <div className="dropdown-item">
                         <Icon name="copy" size={15} /> Copiar nome
                       </div>
+                      {groups.length > 0 && (
+                        <>
+                          <div className="dropdown-sep" />
+                          <div className="dropdown-label">Mover para grupo</div>
+                          {groups.map((g) => (
+                            <div key={g.id} className="dropdown-item" onClick={() => moverGrupo(t, g.id, g.nome)}>
+                              <Icon name="layers" size={14} />
+                              <span className="grow">{g.nome}</span>
+                              {t.grupo === g.nome && <Icon name="check" size={14} />}
+                            </div>
+                          ))}
+                          {t.grupo && (
+                            <div className="dropdown-item" onClick={() => moverGrupo(t, 0, "")}>
+                              <Icon name="x" size={14} /> Remover do grupo
+                            </div>
+                          )}
+                        </>
+                      )}
                     </Dropdown>
                   </div>
                 </div>
               ))}
             </div>
+            </div>
+            ))
           )}
         </div>
       </div>
       <NovoTemplateModal open={novo} onClose={() => setNovo(false)} onCreated={load} />
+      <GruposModal open={gruposOpen} groups={groups} onClose={() => setGruposOpen(false)} onChanged={load} />
     </>
   );
 }

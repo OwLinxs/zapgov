@@ -243,9 +243,20 @@ function NovaConversaModal({
             <div className="muted" style={{ fontSize: 12.5 }}>Nenhum template aprovado. Crie e aprove em Templates.</div>
           ) : (
             <select className="select" value={tpl?.name ?? ""} onChange={(e) => setTpl(aprovados.find((t) => t.name === e.target.value) ?? null)}>
-              {aprovados.map((t) => (
-                <option key={t.name + t.language} value={t.name}>{t.name}</option>
-              ))}
+              {/* agrupado por grupo de templates (secretaria) */}
+              {Array.from(new Set(aprovados.map((t) => t.grupo || ""))).sort().map((g) =>
+                g ? (
+                  <optgroup key={g} label={g}>
+                    {aprovados.filter((t) => (t.grupo || "") === g).map((t) => (
+                      <option key={t.name + t.language} value={t.name}>{t.name}</option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  aprovados.filter((t) => !t.grupo).map((t) => (
+                    <option key={t.name + t.language} value={t.name}>{t.name}</option>
+                  ))
+                ),
+              )}
             </select>
           )}
         </Field>

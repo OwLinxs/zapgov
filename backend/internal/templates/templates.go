@@ -27,6 +27,7 @@ type Template struct {
 	Variables int      `json:"variables"`
 	Motivo    string   `json:"motivo,omitempty"` // razão da rejeição, se houver
 	Setores   []string `json:"setores"`          // departamentos liberados (vazio = só admin/supervisor)
+	Grupo     string   `json:"grupo"`            // grupo organizacional (ex.: "Secretaria de Saúde")
 }
 
 // Client busca templates na Graph API da Meta.

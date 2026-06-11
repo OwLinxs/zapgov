@@ -212,7 +212,19 @@ export interface ApiTemplate {
   variables: number;
   motivo?: string;
   setores: string[]; // departamentos liberados (vazio = só admin/supervisor)
+  grupo: string; // grupo organizacional (ex.: "Secretaria de Saúde")
 }
+
+export interface ApiTemplateGroup {
+  id: number;
+  nome: string;
+}
+export const listTemplateGroups = async () =>
+  (await get<{ groups: ApiTemplateGroup[] }>("/template-groups")).groups ?? [];
+export const createTemplateGroup = (nome: string) => post<ApiTemplateGroup>("/template-groups", { nome });
+export const deleteTemplateGroup = (id: number) => del(`/template-groups/${id}`);
+export const setTemplateGroup = (name: string, groupId: number) =>
+  post(`/templates/${encodeURIComponent(name)}/grupo`, { group_id: groupId }, "PUT");
 
 export async function listTemplates(): Promise<ApiTemplate[]> {
   const data = await get<{ templates: ApiTemplate[] }>("/templates");

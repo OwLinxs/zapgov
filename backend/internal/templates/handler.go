@@ -18,6 +18,57 @@ func (h *Handler) Register(r fiber.Router, gestor, admin fiber.Handler) {
 	r.Get("/templates", h.list)
 	r.Post("/templates", gestor, h.create)
 	r.Put("/templates/:name/setores", admin, h.setSetores)
+	// Grupos de templates (organização por secretaria): admin gerencia.
+	r.Get("/template-groups", h.listGroups)
+	r.Post("/template-groups", admin, h.createGroup)
+	r.Delete("/template-groups/:id", admin, h.deleteGroup)
+	r.Put("/templates/:name/grupo", admin, h.setGroup)
+}
+
+func (h *Handler) listGroups(c *fiber.Ctx) error {
+	gs, err := h.repo.ListGroups(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"groups": gs})
+}
+
+func (h *Handler) createGroup(c *fiber.Ctx) error {
+	var in struct {
+		Nome string `json:"nome"`
+	}
+	if err := c.BodyParser(&in); err != nil || in.Nome == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "nome é obrigatório"})
+	}
+	g, err := h.repo.CreateGroup(c.Context(), in.Nome)
+	if err != nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(g)
+}
+
+func (h *Handler) deleteGroup(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if err := h.repo.DeleteGroup(c.Context(), int64(id)); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *Handler) setGroup(c *fiber.Ctx) error {
+	var in struct {
+		GroupID int64 `json:"group_id"` // 0 remove do grupo
+	}
+	if err := c.BodyParser(&in); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	if err := h.repo.SetGroup(c.Context(), c.Params("name"), in.GroupID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // setSetores define quais departamentos podem usar um template.
@@ -70,13 +121,15 @@ func (h *Handler) list(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Anota cada template com os setores liberados.
+	// Anota cada template com os setores liberados e o grupo.
 	mapa, _ := h.repo.AllSetores(c.Context())
+	grupos, _ := h.repo.AllGroups(c.Context())
 	for i := range tpls {
 		tpls[i].Setores = mapa[tpls[i].Name]
 		if tpls[i].Setores == nil {
 			tpls[i].Setores = []string{}
 		}
+		tpls[i].Grupo = grupos[tpls[i].Name]
 	}
 
 	papel, _ := c.Locals("papel").(string)
