@@ -17,6 +17,7 @@ export interface ApiConversation {
   status: string; // '' | aguardando | em_atendimento | resolvido
   atendente: string;
   opt_out: boolean;
+  queued_at: string | null; // entrada na fila (SLA)
   labels: ApiLabel[] | null;
 }
 
@@ -517,6 +518,7 @@ export interface ApiAtendenteStat {
   atendimentos: number;
   mensagens: number;
   tempo_medio_min: number;
+  satisfacao: number; // média 1-5 (0 = sem respostas)
 }
 export const getAtendentes = async () =>
   (await get<{ atendentes: ApiAtendenteStat[] }>("/metrics/atendentes")).atendentes ?? [];
@@ -558,12 +560,45 @@ export const saveAssinatura = (ativo: boolean) => post("/settings/assinatura", {
 export interface SettingsRoteamento {
   por_setor: boolean;
   por_etiqueta: boolean;
+  sla_minutos: number;
 }
 export const getRoteamento = () => get<SettingsRoteamento>("/settings/roteamento");
 export const saveRoteamento = (r: SettingsRoteamento) => post("/settings/roteamento", r, "PUT");
 
 export const getChatbotAtivo = () => get<{ ativo: boolean }>("/settings/chatbot");
 export const saveChatbotAtivo = (ativo: boolean) => post("/settings/chatbot", { ativo }, "PUT");
+
+// ---- Pesquisa de satisfação ----
+export interface SettingsPesquisa {
+  ativo: boolean;
+  msg: string;
+  obrigado: string;
+}
+export const getPesquisa = () => get<SettingsPesquisa>("/settings/pesquisa");
+export const savePesquisa = (p: SettingsPesquisa) => post("/settings/pesquisa", p, "PUT");
+
+export interface ApiSatisfacao {
+  media: number;
+  respostas: number;
+  enviadas: number;
+}
+export const getSatisfacao = () => get<ApiSatisfacao>("/metrics/satisfacao");
+
+// Baixa um relatório CSV (com auth) e dispara o download.
+export async function downloadReport(tipo: "atendentes" | "setores" | "diario" | "satisfacao", from: string, to: string): Promise<void> {
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  const res = await fetch(`${BASE}/reports/${tipo}.csv?${qs}`, { headers: authHeaders() });
+  if (res.status === 401) { handle401(401); throw new Error("Não autenticado"); }
+  if (!res.ok) throw new Error("Falha ao gerar relatório");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${tipo}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ---- Lembretes automáticos (véspera de consulta) ----
 export interface SettingsLembrete {

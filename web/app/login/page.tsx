@@ -54,7 +54,10 @@ export default function LoginPage() {
             Seguro, rastreável e em conformidade com a LGPD.
           </p>
         </div>
-        <div style={{ position: "relative" }} />
+        <div style={{ position: "relative", fontSize: 11, color: "var(--text-faint)", lineHeight: 1.5 }}>
+          Sistema desenvolvido para uso exclusivo do Município de Francisco Beltrão — PR.
+          <br />Revenda e redistribuição proibidas. Todos os direitos reservados.
+        </div>
       </div>
 
       {/* Formulário */}

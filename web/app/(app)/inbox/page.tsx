@@ -26,6 +26,7 @@ import {
   addNote,
   reactMessage,
   listQuickReplies,
+  getRoteamento,
   createQuickReply,
   deleteQuickReply,
   type ApiQuickReply,
@@ -560,6 +561,7 @@ export default function InboxPage() {
   const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
   const [qrOpen, setQrOpen] = useState(false); // modal "minhas respostas rápidas"
   const [slashOff, setSlashOff] = useState(false); // autocomplete / dispensado (Esc/selecionou)
+  const [slaMin, setSlaMin] = useState(15); // SLA da fila (minutos)
   // Gravação de áudio (MediaRecorder).
   const [gravando, setGravando] = useState(false);
   const [recSeg, setRecSeg] = useState(0);
@@ -636,6 +638,7 @@ export default function InboxPage() {
     listDepartments().then(setDeps).catch(() => {});
     listLabels().then(setLabels).catch(() => {});
     listQuickReplies().then(setQuickReplies).catch(() => {});
+    getRoteamento().then((r) => setSlaMin(r.sla_minutos || 15)).catch(() => {});
     const t = setInterval(loadConvs, 20000);
     return () => clearInterval(t);
   }, [loadConvs]);
@@ -832,9 +835,23 @@ export default function InboxPage() {
   }, [buscandoServer, q, filter, setorFiltro]);
 
   // Lista exibida: busca server-side quando há termo, senão o filtro local.
-  const lista = buscandoServer
+  const listaBase = buscandoServer
     ? finBusca.filter((c) => atendenteFiltro === "Todos" || c.atendente === atendenteFiltro)
     : filtered;
+  // Aba Fila: ordena pela espera (mais antiga primeiro) — SLA primeiro a estourar no topo.
+  const lista = filter === "aguardando"
+    ? [...listaBase].sort((a, b) => new Date(a.queued_at || a.last_msg_at).getTime() - new Date(b.queued_at || b.last_msg_at).getTime())
+    : listaBase;
+
+  // SLA: minutos de espera + cor (verde <50%, amarelo até 100%, vermelho estourado).
+  const esperaMin = (c: ApiConversation) =>
+    c.queued_at ? Math.max(0, Math.floor((Date.now() - new Date(c.queued_at).getTime()) / 60000)) : 0;
+  const slaCor = (min: number) =>
+    min >= slaMin ? "var(--st-failed)" : min >= slaMin / 2 ? "var(--st-pending)" : "var(--st-read)";
+  const filaAguardando = convs.filter((c) => c.status === "aguardando");
+  const maisAntigaMin = filaAguardando.length
+    ? Math.max(...filaAguardando.map(esperaMin))
+    : 0;
 
   async function finalizarEmMassa() {
     setBulkConfirm(false);
@@ -880,7 +897,12 @@ export default function InboxPage() {
             </Button>
           </div>
           <div className="row center" style={{ gap: 8, marginBottom: 12 }}>
-            <span className="badge badge-pending">{convs.filter((c) => c.status === "aguardando").length} na fila</span>
+            <span className="badge badge-pending">{filaAguardando.length} na fila</span>
+            {filaAguardando.length > 0 && (
+              <span className="badge" style={{ background: "transparent", border: "1px solid var(--border-subtle)", color: slaCor(maisAntigaMin) }}>
+                ⏱ mais antiga há {maisAntigaMin} min
+              </span>
+            )}
             <span className="muted" style={{ fontSize: 11.5 }}>
               {convs.filter((c) => c.status === "aguardando" || c.status === "em_atendimento").length} abertas
             </span>
@@ -964,6 +986,15 @@ export default function InboxPage() {
                     {c.status && STATUS_BADGE[c.status] && (
                       <span className={"badge " + STATUS_BADGE[c.status].cls} style={{ height: 18, fontSize: 10.5 }}>
                         {STATUS_BADGE[c.status].label}
+                      </span>
+                    )}
+                    {c.status === "aguardando" && c.queued_at && (
+                      <span
+                        className="badge"
+                        style={{ height: 18, fontSize: 10.5, background: "transparent", border: "1px solid var(--border-subtle)", color: slaCor(esperaMin(c)), fontWeight: 700 }}
+                        title={`Aguardando há ${esperaMin(c)} min (SLA: ${slaMin} min)`}
+                      >
+                        ⏱ {esperaMin(c)}m
                       </span>
                     )}
                     {(c.labels ?? []).map((l) => (

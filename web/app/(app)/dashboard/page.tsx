@@ -15,8 +15,8 @@ import {
 } from "@/components/ui";
 import { SETOR_COR } from "@/lib/data";
 import {
-  getKpis, getVolume, getActivity, getAtendentes,
-  type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat,
+  getKpis, getVolume, getActivity, getAtendentes, getSatisfacao,
+  type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat, type ApiSatisfacao,
 } from "@/lib/api";
 import { IconName } from "@/lib/icons";
 
@@ -68,16 +68,21 @@ export default function DashboardPage() {
   const [dados, setDados] = useState<ApiVolumePoint[]>([]);
   const [atividade, setAtividade] = useState<ApiAtividade[]>([]);
   const [atendentes, setAtendentes] = useState<ApiAtendenteStat[]>([]);
+  const [sat, setSat] = useState<ApiSatisfacao | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (p: "hora" | "dia") => {
     setLoading(true);
     try {
-      const [k, v, a, at] = await Promise.all([getKpis(), getVolume(p), getActivity(), getAtendentes().catch(() => [])]);
+      const [k, v, a, at, sa] = await Promise.all([
+        getKpis(), getVolume(p), getActivity(), getAtendentes().catch(() => []),
+        getSatisfacao().catch(() => null),
+      ]);
       setKpis(k);
       setDados(v);
       setAtividade(a);
       setAtendentes(at);
+      setSat(sa);
     } catch { /* mantém o que já tem */ } finally {
       setLoading(false);
     }
@@ -182,6 +187,20 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+              {sat && sat.enviadas > 0 && (
+                <div className="card card-pad col" style={{ gap: 8 }}>
+                  <div className="card-title">Satisfação (30 dias)</div>
+                  <div className="row center" style={{ gap: 14 }}>
+                    <span className="mono" style={{ fontSize: 34, fontWeight: 700, color: "var(--st-pending)" }}>
+                      {sat.media > 0 ? sat.media.toFixed(1) : "—"}
+                    </span>
+                    <div className="col" style={{ gap: 1, fontSize: 12, color: "var(--text-tertiary)" }}>
+                      <span>{"⭐".repeat(Math.round(sat.media || 0))}</span>
+                      <span>{sat.respostas} respostas de {sat.enviadas} pesquisas ({sat.enviadas > 0 ? Math.round((sat.respostas / sat.enviadas) * 100) : 0}%)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="card card-pad col" style={{ gap: 12 }}>
                 <div className="row between center">
                   <div className="card-title">Status da conexão</div>
@@ -287,6 +306,7 @@ export default function DashboardPage() {
                     <th style={{ textAlign: "right" }}>Atendimentos</th>
                     <th style={{ textAlign: "right" }}>Mensagens</th>
                     <th style={{ textAlign: "right" }}>Tempo médio</th>
+                    <th style={{ textAlign: "right" }}>Satisfação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -300,6 +320,7 @@ export default function DashboardPage() {
                       <td style={{ textAlign: "right" }} className="mono">{a.atendimentos}</td>
                       <td style={{ textAlign: "right" }} className="mono">{a.mensagens}</td>
                       <td style={{ textAlign: "right" }} className="mono">{a.tempo_medio_min > 0 ? a.tempo_medio_min.toFixed(0) + " min" : "—"}</td>
+                      <td style={{ textAlign: "right" }} className="mono">{a.satisfacao > 0 ? "⭐ " + a.satisfacao.toFixed(1) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>

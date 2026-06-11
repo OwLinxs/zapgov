@@ -11,13 +11,14 @@ import {
   getAssinatura, saveAssinatura,
   getRoteamento, saveRoteamento,
   getChatbotAtivo, saveChatbotAtivo,
+  getPesquisa, savePesquisa,
   getLembrete, saveLembrete, listReminders, cancelReminder, listTemplates,
   listWebhooks, createWebhook, deleteWebhook,
   listUsers, createUser, updateUser, resetUserPassword,
   listDepartments,
   listQuickReplies, createQuickReply, deleteQuickReply,
   type SettingsOrg, type SettingsMeta, type SettingsBilling, type SettingsWebhook,
-  type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type SettingsLembrete,
+  type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type SettingsLembrete, type SettingsPesquisa,
   type ApiUser, type Papel, type ApiDepartment, type ApiQuickReply, type ApiReminder, type ApiTemplate,
 } from "@/lib/api";
 
@@ -245,8 +246,9 @@ function AtendimentoSection() {
   const [aus, setAus] = useState<SettingsAusencia | null>(null);
   const [feriados, setFeriados] = useState<string[]>([]);
   const [assinatura, setAssinatura] = useState(false);
-  const [rot, setRot] = useState<SettingsRoteamento>({ por_setor: false, por_etiqueta: false });
+  const [rot, setRot] = useState<SettingsRoteamento>({ por_setor: false, por_etiqueta: false, sla_minutos: 15 });
   const [chatbot, setChatbot] = useState(true);
+  const [pesq, setPesq] = useState<SettingsPesquisa>({ ativo: false, msg: "", obrigado: "" });
   const [lem, setLem] = useState<SettingsLembrete>({ ativo: false, template: "", idioma: "pt_BR", hora: "09:00", fuso: "" });
   const [lemList, setLemList] = useState<ApiReminder[]>([]);
   const [tpls, setTpls] = useState<ApiTemplate[]>([]);
@@ -258,6 +260,7 @@ function AtendimentoSection() {
     getAssinatura().then((a) => setAssinatura(a.ativo)).catch(() => {});
     getRoteamento().then(setRot).catch(() => {});
     getChatbotAtivo().then((c) => setChatbot(c.ativo)).catch(() => {});
+    getPesquisa().then(setPesq).catch(() => {});
     getLembrete().then(setLem).catch(() => {});
     listReminders().then(setLemList).catch(() => {});
     listTemplates().then((ts) => setTpls(ts.filter((t) => t.status === "aprovado"))).catch(() => {});
@@ -285,6 +288,7 @@ function AtendimentoSection() {
         saveAssinatura(assinatura),
         saveRoteamento(rot),
         saveChatbotAtivo(chatbot),
+        savePesquisa(pesq),
         saveLembrete({ ativo: lem.ativo, template: lem.template, idioma: lem.idioma, hora: lem.hora }),
       ]);
       toast({ type: "success", title: "Alterações salvas" });
@@ -392,6 +396,14 @@ function AtendimentoSection() {
             </div>
           </div>
         </label>
+        <Field label="SLA da fila (minutos)" hint="Tempo-alvo de espera. Na fila: verde < 50%, amarelo até 100%, vermelho estourado.">
+          <Input
+            type="number"
+            style={{ maxWidth: 140 }}
+            value={String(rot.sla_minutos || 15)}
+            onChange={(e) => setRot({ ...rot, sla_minutos: Number(e.target.value) || 15 })}
+          />
+        </Field>
       </div>
 
       {/* Assinatura do atendente */}
@@ -588,6 +600,52 @@ function AtendimentoSection() {
               ))}
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Pesquisa de satisfação */}
+      <div className="card card-pad col" style={{ gap: 16, marginTop: 16 }}>
+        <label className="row center" style={{ gap: 10, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={pesq.ativo}
+            onChange={(e) => setPesq({ ...pesq, ativo: e.target.checked })}
+            style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
+          />
+          <div className="col" style={{ gap: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Pesquisa de satisfação</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Ao finalizar um atendimento, envia uma avaliação de 1 a 5 estrelas (lista interativa).
+              A resposta não reabre a conversa. Métricas no Dashboard e em Relatórios.
+            </div>
+          </div>
+        </label>
+
+        <Field label="Pergunta">
+          <textarea
+            className="input"
+            rows={2}
+            value={pesq.msg}
+            disabled={!pesq.ativo}
+            onChange={(e) => setPesq({ ...pesq, msg: e.target.value })}
+            style={{ resize: "vertical", lineHeight: 1.5, opacity: pesq.ativo ? 1 : 0.55 }}
+          />
+        </Field>
+        <Field label="Agradecimento (após a nota)">
+          <Input value={pesq.obrigado} disabled={!pesq.ativo} onChange={(e) => setPesq({ ...pesq, obrigado: e.target.value })} />
+        </Field>
+
+        {pesq.ativo && (
+          <Field label="Prévia">
+            <div className="col" style={{ gap: 4, maxWidth: 360 }}>
+              <div style={{ background: "var(--bubble-out, #d9fdd3)", color: "#111", padding: "9px 12px", borderRadius: 10, fontSize: 13, lineHeight: 1.5 }}>
+                {pesq.msg || "—"}
+              </div>
+              <div style={{ background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>
+                ⭐⭐⭐⭐⭐ Excelente · ⭐⭐⭐⭐ Bom · ⭐⭐⭐ Regular · ⭐⭐ Ruim · ⭐ Muito ruim
+              </div>
+            </div>
+          </Field>
         )}
       </div>
 

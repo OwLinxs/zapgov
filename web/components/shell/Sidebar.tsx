@@ -32,6 +32,7 @@ const NAV: NavDef[] = [
 
 const NAV_FOOT: NavDef[] = [
   { href: "/departamentos", label: "Departamentos", icon: "building", roles: ["admin"] },
+  { href: "/relatorios", label: "Relatórios", icon: "download", roles: ["admin", "supervisor"] },
   { href: "/auditoria", label: "Auditoria", icon: "list", roles: ["admin", "supervisor"] },
   { href: "/config", label: "Configurações", icon: "settings", roles: ["admin"] },
 ];
