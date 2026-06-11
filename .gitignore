@@ -5,6 +5,7 @@
 !/deploy/
 !/docker-compose.prod.yml
 !/.gitignore
+!/LICENSE.md
 
 # Segredos — nunca versionar (mesmo dentro das pastas acima)
 backend/.env

@@ -86,24 +86,50 @@ func (r *Repository) SetEncerramento(ctx context.Context, e Encerramento) error 
 	return err
 }
 
-// Roteamento de atendimento (escopo por setor + auto-etiqueta).
+// Roteamento de atendimento (escopo por setor + auto-etiqueta + SLA da fila).
 type Roteamento struct {
 	PorSetor    bool `json:"por_setor"`
 	PorEtiqueta bool `json:"por_etiqueta"`
+	SLAMinutos  int  `json:"sla_minutos"`
 }
 
 func (r *Repository) GetRoteamento(ctx context.Context) (Roteamento, error) {
 	tid := tenantctx.From(ctx)
 	r.ensure(ctx, tid)
 	var rt Roteamento
-	err := r.pool.QueryRow(ctx, `SELECT roteamento_setor, etiqueta_atendente FROM org_settings WHERE tenant_id = $1`, tid).
-		Scan(&rt.PorSetor, &rt.PorEtiqueta)
+	err := r.pool.QueryRow(ctx, `SELECT roteamento_setor, etiqueta_atendente, sla_minutos FROM org_settings WHERE tenant_id = $1`, tid).
+		Scan(&rt.PorSetor, &rt.PorEtiqueta, &rt.SLAMinutos)
 	return rt, err
 }
 
 func (r *Repository) SetRoteamento(ctx context.Context, rt Roteamento) error {
-	_, err := r.pool.Exec(ctx, `UPDATE org_settings SET roteamento_setor = $1, etiqueta_atendente = $2 WHERE tenant_id = $3`,
-		rt.PorSetor, rt.PorEtiqueta, tenantctx.From(ctx))
+	if rt.SLAMinutos <= 0 {
+		rt.SLAMinutos = 15
+	}
+	_, err := r.pool.Exec(ctx, `UPDATE org_settings SET roteamento_setor = $1, etiqueta_atendente = $2, sla_minutos = $3 WHERE tenant_id = $4`,
+		rt.PorSetor, rt.PorEtiqueta, rt.SLAMinutos, tenantctx.From(ctx))
+	return err
+}
+
+// Pesquisa de satisfação pós-atendimento.
+type Pesquisa struct {
+	Ativo    bool   `json:"ativo"`
+	Msg      string `json:"msg"`
+	Obrigado string `json:"obrigado"`
+}
+
+func (r *Repository) GetPesquisa(ctx context.Context) (Pesquisa, error) {
+	tid := tenantctx.From(ctx)
+	r.ensure(ctx, tid)
+	var p Pesquisa
+	err := r.pool.QueryRow(ctx, `SELECT pesquisa_ativo, pesquisa_msg, pesquisa_obrigado FROM org_settings WHERE tenant_id = $1`, tid).
+		Scan(&p.Ativo, &p.Msg, &p.Obrigado)
+	return p, err
+}
+
+func (r *Repository) SetPesquisa(ctx context.Context, p Pesquisa) error {
+	_, err := r.pool.Exec(ctx, `UPDATE org_settings SET pesquisa_ativo = $1, pesquisa_msg = $2, pesquisa_obrigado = $3 WHERE tenant_id = $4`,
+		p.Ativo, p.Msg, p.Obrigado, tenantctx.From(ctx))
 	return err
 }
 

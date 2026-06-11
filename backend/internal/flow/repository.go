@@ -85,7 +85,7 @@ func (r *Repository) Handoff(ctx context.Context, phone, dept string, vars map[s
 	raw, _ := json.Marshal(vars)
 	_, err := r.pool.Exec(ctx, `
 		UPDATE conversations
-		SET setor = COALESCE(NULLIF($2,''), setor), dados = $3, status = 'aguardando'
+		SET setor = COALESCE(NULLIF($2,''), setor), dados = $3, status = 'aguardando', queued_at = now()
 		WHERE tenant_id = $4 AND contact_phone = $1`,
 		phone, dept, raw, tenantctx.From(ctx),
 	)

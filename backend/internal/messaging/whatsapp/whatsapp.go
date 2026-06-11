@@ -340,12 +340,15 @@ func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []mes
 				case "sticker":
 					fillMedia(&im, "sticker", m.Sticker)
 				case "interactive":
-					// toque em botão/lista interativos: o título vira o "texto".
+					// toque em botão/lista interativos: o título vira o "texto"
+					// e o ID fica disponível (pesquisa de satisfação usa).
 					if m.Interactive != nil {
 						if m.Interactive.ButtonReply != nil {
 							im.Body = m.Interactive.ButtonReply.Title
+							im.ButtonID = m.Interactive.ButtonReply.ID
 						} else if m.Interactive.ListReply != nil {
 							im.Body = m.Interactive.ListReply.Title
+							im.ButtonID = m.Interactive.ListReply.ID
 						}
 					}
 					if im.Body == "" {
@@ -355,6 +358,7 @@ func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []mes
 					// toque em botão de quick-reply de TEMPLATE (texto do botão).
 					if m.Button != nil {
 						im.Body = m.Button.Text
+						im.ButtonID = m.Button.Payload
 						if im.Body == "" {
 							im.Body = m.Button.Payload
 						}

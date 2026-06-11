@@ -31,6 +31,7 @@ type IncomingMessage struct {
 	From        string
 	Name        string
 	Body        string // texto ou legenda da mídia
+	ButtonID    string // id do botão/lista tocado (ex.: "nota_5"); vazio se texto livre
 	Timestamp   time.Time
 
 	// Mídia (vazio quando é só texto).

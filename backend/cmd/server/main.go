@@ -32,6 +32,7 @@ import (
 	"zapgov/backend/internal/realtime"
 	"zapgov/backend/internal/reminders"
 	"zapgov/backend/internal/settings"
+	"zapgov/backend/internal/surveys"
 	"zapgov/backend/internal/templates"
 	"zapgov/backend/internal/tenantctx"
 	"zapgov/backend/internal/tenants"
@@ -180,7 +181,9 @@ func main() {
 	// Lembretes automáticos: data futura nas variáveis do template agenda a véspera.
 	remindersRepo := reminders.NewRepository(pool)
 	reminders.NewHandler(remindersRepo).Register(api)
-	metrics.NewHandler(metrics.NewRepository(pool)).Register(api)
+	metricsH := metrics.NewHandler(metrics.NewRepository(pool))
+	metricsH.Register(api)
+	metricsH.RegisterReports(api, opsOnly)
 
 	templatesClient := templates.NewClient(cfg.WhatsAppWABAID, cfg.WhatsAppToken, cfg.WhatsAppAPIVersion)
 	// Templates por tenant: usa a WABA/token do órgão (fallback .env no tenant 1).
@@ -346,19 +349,51 @@ func main() {
 
 	// Mensagem de encerramento: ao finalizar uma conversa, manda um aviso ao
 	// cidadão (se ativo na config e a janela de 24h ainda estiver aberta).
+	surveysRepo := surveys.NewRepository(pool)
+
 	svc.OnResolved = func(ctx context.Context, convID int64) {
-		enc, err := settingsRepo.GetEncerramento(ctx)
-		if err != nil || !enc.Ativo || enc.Msg == "" {
-			return
+		phone, name, errC := svc.ContatoDaConversa(ctx, convID)
+
+		// Mensagem de encerramento (se ativa).
+		if enc, err := settingsRepo.GetEncerramento(ctx); err == nil && enc.Ativo && enc.Msg != "" && errC == nil {
+			texto := strings.ReplaceAll(enc.Msg, "{{nome}}", firstName(name))
+			if _, err := svc.SendText(ctx, phone, texto); err != nil {
+				log.Printf("encerramento: falha ao enviar para conv %d: %v", convID, err)
+			}
 		}
-		phone, name, err := svc.ContatoDaConversa(ctx, convID)
-		if err != nil {
-			return
+
+		// Pesquisa de satisfação (se ativa): lista interativa 1-5.
+		if p, err := settingsRepo.GetPesquisa(ctx); err == nil && p.Ativo && p.Msg != "" && errC == nil {
+			setor, atendente, _ := repo.SetorAtendente(ctx, convID)
+			opts := []messaging.MenuOption{
+				{Key: "nota_5", Label: "⭐⭐⭐⭐⭐ Excelente"},
+				{Key: "nota_4", Label: "⭐⭐⭐⭐ Bom"},
+				{Key: "nota_3", Label: "⭐⭐⭐ Regular"},
+				{Key: "nota_2", Label: "⭐⭐ Ruim"},
+				{Key: "nota_1", Label: "⭐ Muito ruim"},
+			}
+			if _, err := svc.SendMenu(ctx, phone, p.Msg, opts); err != nil {
+				log.Printf("pesquisa: falha ao enviar para conv %d: %v", convID, err)
+				return
+			}
+			_ = surveysRepo.Create(ctx, convID, atendente, setor)
 		}
-		texto := strings.ReplaceAll(enc.Msg, "{{nome}}", firstName(name))
-		if _, err := svc.SendText(ctx, phone, texto); err != nil {
-			log.Printf("encerramento: falha ao enviar para conv %d: %v", convID, err)
+	}
+
+	// Captura da resposta da pesquisa: nota válida + pendência → consome.
+	svc.OnSurveyAnswer = func(ctx context.Context, convID int64, buttonID, body, from string) bool {
+		nota, ok := surveys.ParseNota(buttonID, body)
+		if !ok {
+			return false
 		}
+		answered, err := surveysRepo.Answer(ctx, convID, nota)
+		if err != nil || !answered {
+			return false // sem pesquisa pendente: segue fluxo normal
+		}
+		if p, err := settingsRepo.GetPesquisa(ctx); err == nil && p.Obrigado != "" {
+			_, _ = svc.SendText(ctx, from, p.Obrigado)
+		}
+		return true
 	}
 
 	// Job periódico: finaliza conversas cuja janela de 24h expirou.

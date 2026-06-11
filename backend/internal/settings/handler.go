@@ -35,6 +35,8 @@ func (h *Handler) Register(r fiber.Router, admin fiber.Handler) {
 	r.Put("/settings/chatbot", admin, h.putChatbot)
 	r.Get("/settings/lembrete", h.getLembrete)
 	r.Put("/settings/lembrete", admin, h.putLembrete)
+	r.Get("/settings/pesquisa", h.getPesquisa)
+	r.Put("/settings/pesquisa", admin, h.putPesquisa)
 	r.Get("/settings/meta", h.getMeta)
 	r.Get("/settings/billing", h.getBilling)
 	r.Get("/settings/apikey", admin, h.getApiKey)
@@ -180,6 +182,25 @@ func (h *Handler) putLembrete(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
 	}
 	if err := h.repo.SetLembrete(c.Context(), l); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) getPesquisa(c *fiber.Ctx) error {
+	p, err := h.repo.GetPesquisa(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(p)
+}
+
+func (h *Handler) putPesquisa(c *fiber.Ctx) error {
+	var p Pesquisa
+	if err := c.BodyParser(&p); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	if err := h.repo.SetPesquisa(c.Context(), p); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"ok": true})

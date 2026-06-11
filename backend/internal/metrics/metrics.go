@@ -247,6 +247,7 @@ type AtendenteStat struct {
 	Atendimentos  int     `json:"atendimentos"`
 	Mensagens     int     `json:"mensagens"`
 	TempoMedioMin float64 `json:"tempo_medio_min"`
+	Satisfacao    float64 `json:"satisfacao"` // média 1-5 (0 = sem respostas)
 }
 
 func (r *Repository) Atendentes(ctx context.Context) ([]AtendenteStat, error) {
@@ -255,12 +256,15 @@ func (r *Repository) Atendentes(ctx context.Context) ([]AtendenteStat, error) {
 		       count(DISTINCT s.id) FILTER (WHERE s.encerrada_em IS NOT NULL) AS atendimentos,
 		       count(m.id) FILTER (WHERE m.direction = 'out') AS mensagens,
 		       COALESCE(avg(EXTRACT(EPOCH FROM (s.encerrada_em - s.iniciada_em)))
-		                FILTER (WHERE s.encerrada_em IS NOT NULL), 0) / 60 AS tempo_medio_min
+		                FILTER (WHERE s.encerrada_em IS NOT NULL), 0) / 60 AS tempo_medio_min,
+		       COALESCE((SELECT avg(sv.nota) FROM surveys sv
+		                 WHERE sv.tenant_id = s.tenant_id AND sv.atendente = s.atendente
+		                   AND sv.nota IS NOT NULL AND sv.enviada_em >= now() - interval '30 days'), 0) AS satisfacao
 		FROM sessions s
 		LEFT JOIN messages m ON m.session_id = s.id
 		WHERE s.tenant_id = $1 AND s.atendente <> ''
 		  AND s.iniciada_em >= now() - interval '30 days'
-		GROUP BY s.atendente
+		GROUP BY s.tenant_id, s.atendente
 		ORDER BY atendimentos DESC, mensagens DESC`,
 		tenantctx.From(ctx))
 	if err != nil {
@@ -269,8 +273,9 @@ func (r *Repository) Atendentes(ctx context.Context) ([]AtendenteStat, error) {
 	defer rows.Close()
 	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (AtendenteStat, error) {
 		var a AtendenteStat
-		err := row.Scan(&a.Nome, &a.Atendimentos, &a.Mensagens, &a.TempoMedioMin)
+		err := row.Scan(&a.Nome, &a.Atendimentos, &a.Mensagens, &a.TempoMedioMin, &a.Satisfacao)
 		a.TempoMedioMin = round1(a.TempoMedioMin)
+		a.Satisfacao = round1(a.Satisfacao)
 		return a, err
 	})
 	if out == nil {

@@ -62,6 +62,11 @@ type Service struct {
 	// OnUndeliverable, se definido, é chamado quando a Meta reporta que o número
 	// NÃO tem WhatsApp (erro 131026). Usado p/ marcar o contato.
 	OnUndeliverable func(ctx context.Context, phone string)
+
+	// OnSurveyAnswer, se definido, tenta consumir a mensagem como resposta de
+	// pesquisa de satisfação. true = consumida (a conversa volta a resolvida e
+	// nem bot nem fila são acionados).
+	OnSurveyAnswer func(ctx context.Context, convID int64, buttonID, body, from string) bool
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -307,6 +312,14 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		if nome == "" {
 			nome = in.From
 		}
+		// Resposta de pesquisa de satisfação: grava a nota, agradece e devolve a
+		// conversa a resolvida — não reabre fila nem dispara bot.
+		if s.OnSurveyAnswer != nil && s.OnSurveyAnswer(ctx, convID, in.ButtonID, in.Body, in.From) {
+			_ = s.repo.Resolve(ctx, convID)
+			s.emit(ctx, convID, "message")
+			continue
+		}
+
 		s.emitInbound(ctx, convID, nome, preview)
 
 		// Auto-resposta de ausência (feriado/fim de semana), no máximo 1x por

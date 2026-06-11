@@ -116,6 +116,7 @@ type Conversation struct {
 	Status          string            `json:"status"`
 	Atendente       string            `json:"atendente"`
 	OptOut          bool              `json:"opt_out"`
+	QueuedAt        *time.Time        `json:"queued_at"` // entrada na fila (SLA)
 	Labels          []ConvLabel       `json:"labels"`
 }
 
@@ -310,7 +311,7 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.id, c.contact_phone, c.contact_name, c.unread_count,
 		       COALESCE(m.body, '') AS last_message,
-		       c.last_msg_at, c.window_expires_at, c.setor, c.dados, c.status, c.atendente, c.opt_out,
+		       c.last_msg_at, c.window_expires_at, c.setor, c.dados, c.status, c.atendente, c.opt_out, c.queued_at,
 		       COALESCE((SELECT json_agg(json_build_object('id', l.id, 'nome', l.nome, 'cor', l.cor) ORDER BY l.nome)
 		                 FROM conversation_labels cl JOIN labels l ON l.id = cl.label_id
 		                 WHERE cl.conversation_id = c.id), '[]') AS labels
@@ -347,7 +348,7 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 		var c Conversation
 		var dadosRaw, labelsRaw []byte
 		err := row.Scan(&c.ID, &c.ContactPhone, &c.ContactName, &c.UnreadCount,
-			&c.LastMessage, &c.LastMsgAt, &c.WindowExpiresAt, &c.Setor, &dadosRaw, &c.Status, &c.Atendente, &c.OptOut, &labelsRaw)
+			&c.LastMessage, &c.LastMsgAt, &c.WindowExpiresAt, &c.Setor, &dadosRaw, &c.Status, &c.Atendente, &c.OptOut, &c.QueuedAt, &labelsRaw)
 		if err == nil && len(dadosRaw) > 0 {
 			c.Dados = map[string]string{}
 			_ = json.Unmarshal(dadosRaw, &c.Dados)
@@ -474,7 +475,7 @@ func (r *Repository) SetLabels(ctx context.Context, convID int64, labelIDs []int
 // atendente assumir. Usado quando o chatbot está desligado.
 func (r *Repository) Enqueue(ctx context.Context, convID int64) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE conversations SET status = 'aguardando'
+		UPDATE conversations SET status = 'aguardando', queued_at = now()
 		WHERE id = $1 AND tenant_id = $2 AND status = ''`,
 		convID, tenantctx.From(ctx))
 	return err
@@ -522,7 +523,7 @@ func (r *Repository) SetSetorIfEmpty(ctx context.Context, convID int64, setor st
 // sem atendente), para o time do novo setor assumir.
 func (r *Repository) Transfer(ctx context.Context, id int64, setor string) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE conversations SET setor = $2, status = 'aguardando', atendente = ''
+		UPDATE conversations SET setor = $2, status = 'aguardando', atendente = '', queued_at = now()
 		WHERE id = $1 AND tenant_id = $3`,
 		id, setor, tenantctx.From(ctx))
 	return err
@@ -598,6 +599,15 @@ func (r *Repository) PhoneByID(ctx context.Context, id int64) (string, error) {
 	var phone string
 	err := r.pool.QueryRow(ctx, `SELECT contact_phone FROM conversations WHERE id = $1 AND tenant_id = $2`, id, tenantctx.From(ctx)).Scan(&phone)
 	return phone, err
+}
+
+// SetorAtendente devolve o setor e o atendente atuais da conversa (snapshot
+// para a pesquisa de satisfação).
+func (r *Repository) SetorAtendente(ctx context.Context, id int64) (string, string, error) {
+	var setor, atendente string
+	err := r.pool.QueryRow(ctx, `SELECT setor, atendente FROM conversations WHERE id = $1 AND tenant_id = $2`,
+		id, tenantctx.From(ctx)).Scan(&setor, &atendente)
+	return setor, atendente, err
 }
 
 // ConversationContact devolve telefone e nome do contato de uma conversa.
