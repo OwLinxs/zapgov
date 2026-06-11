@@ -33,8 +33,15 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 echo "==> Front: build + restart"
 cd web
-npm ci
-NEXT_PUBLIC_API_URL="$API_URL" npm run build
+# Build como o usuário real (root deixaria .next com dono errado → EACCES depois).
+if [ -n "${SUDO_USER:-}" ]; then
+  chown -R "$SUDO_USER" .
+  sudo -u "$SUDO_USER" npm ci
+  sudo -u "$SUDO_USER" env NEXT_PUBLIC_API_URL="$API_URL" npm run build
+else
+  npm ci
+  NEXT_PUBLIC_API_URL="$API_URL" npm run build
+fi
 cd "$ROOT"
 sudo systemctl restart zapgov-web
 
