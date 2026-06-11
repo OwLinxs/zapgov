@@ -548,6 +548,7 @@ export default function InboxPage() {
   const [notaMode, setNotaMode] = useState(false);
   const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
   const [qrOpen, setQrOpen] = useState(false); // modal "minhas respostas rápidas"
+  const [slashOff, setSlashOff] = useState(false); // autocomplete / dispensado (Esc/selecionou)
   // Gravação de áudio (MediaRecorder).
   const [gravando, setGravando] = useState(false);
   const [recSeg, setRecSeg] = useState(0);
@@ -717,6 +718,18 @@ export default function InboxPage() {
     recCancel.current = cancelar;
     recRef.current?.stop();
   }
+
+  // Autocomplete "/atalho": digitou / no início → filtra respostas rápidas.
+  const slashMatches = (() => {
+    if (slashOff || notaMode || !draft.startsWith("/")) return [] as ApiQuickReply[];
+    const termo = draft.toLowerCase();
+    return quickReplies
+      .filter((qr) =>
+        (qr.atalho && qr.atalho.toLowerCase().startsWith(termo)) ||
+        (termo.length > 2 && qr.texto.toLowerCase().includes(termo.slice(1))),
+      )
+      .slice(0, 6);
+  })();
 
   async function reagir(waId: string, emoji: string) {
     if (!active) return;
@@ -1177,14 +1190,54 @@ export default function InboxPage() {
                   >
                     <Icon name="edit" size={18} />
                   </button>
-                  <input
-                    className="input"
-                    style={{ height: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, borderColor: notaMode ? "var(--st-pending)" : undefined }}
-                    placeholder={notaMode ? "Nota interna (não vai pro cidadão)…" : "Digite uma resposta…"}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && enviar()}
-                  />
+                  <div className="grow" style={{ position: "relative" }}>
+                    {/* Autocomplete de respostas rápidas: digite / + atalho */}
+                    {slashMatches.length > 0 && (
+                      <div
+                        style={{
+                          position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0, zIndex: 30,
+                          background: "var(--bg-elevated, var(--bg-surface))", border: "1px solid var(--border)",
+                          borderRadius: 10, boxShadow: "0 8px 28px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: 240, overflowY: "auto",
+                        }}
+                      >
+                        {slashMatches.map((qr, i) => (
+                          <div
+                            key={qr.id}
+                            onClick={() => { setDraft(qr.texto); setSlashOff(true); }}
+                            style={{
+                              padding: "9px 12px", cursor: "pointer", fontSize: 12.5,
+                              background: i === 0 ? "var(--brand-soft)" : "transparent",
+                              borderBottom: "1px solid var(--border-subtle)",
+                            }}
+                          >
+                            <div className="row center" style={{ gap: 7 }}>
+                              {qr.atalho && <span className="strong mono" style={{ fontSize: 11.5 }}>{qr.atalho}</span>}
+                              {qr.minha && <span className="badge badge-neutral" style={{ fontSize: 9 }}>minha</span>}
+                              {i === 0 && <span className="faint" style={{ fontSize: 10, marginLeft: "auto" }}>Tab ou Enter ↵</span>}
+                            </div>
+                            <div className="faint" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{qr.texto}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <input
+                      className="input"
+                      style={{ width: "100%", height: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, borderColor: notaMode ? "var(--st-pending)" : undefined }}
+                      placeholder={notaMode ? "Nota interna (não vai pro cidadão)…" : "Digite uma resposta… ( / = atalhos)"}
+                      value={draft}
+                      onChange={(e) => { setDraft(e.target.value); setSlashOff(false); }}
+                      onKeyDown={(e) => {
+                        if (slashMatches.length > 0 && (e.key === "Enter" || e.key === "Tab")) {
+                          e.preventDefault();
+                          setDraft(slashMatches[0].texto);
+                          setSlashOff(true);
+                          return;
+                        }
+                        if (e.key === "Escape") { setSlashOff(true); return; }
+                        if (e.key === "Enter") enviar();
+                      }}
+                    />
+                  </div>
                   {!notaMode && !draft.trim() && (
                     <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Gravar áudio" onClick={iniciarGravacao}>
                       <Icon name="mic" size={18} />
