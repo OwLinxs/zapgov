@@ -690,8 +690,10 @@ export interface ApiQuickReply {
 }
 export const listQuickReplies = async () =>
   (await get<{ quick_replies: ApiQuickReply[] }>("/quick-replies")).quick_replies ?? [];
-export const createQuickReply = (atalho: string, texto: string) =>
-  post<ApiQuickReply>("/quick-replies", { atalho, texto });
+// pessoal=true cria só para o usuário logado (modal do chat); false = global
+// do órgão (Configurações, admin). Atendente é sempre pessoal no servidor.
+export const createQuickReply = (atalho: string, texto: string, pessoal = false) =>
+  post<ApiQuickReply>("/quick-replies", { atalho, texto, pessoal });
 export const deleteQuickReply = (id: number) => del(`/quick-replies/${id}`);
 
 export async function sendTemplate(input: {

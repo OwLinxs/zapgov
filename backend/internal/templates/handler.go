@@ -12,11 +12,12 @@ func NewHandler(client *Client, repo *Repository) *Handler {
 	return &Handler{client: client, repo: repo}
 }
 
-// Register: listar é filtrado por setor; criar e atribuir são admin/supervisor.
-func (h *Handler) Register(r fiber.Router, gestor fiber.Handler) {
+// Register: listar é filtrado por setor; criar é admin/supervisor; atribuir
+// departamentos é SÓ admin (decisão de política).
+func (h *Handler) Register(r fiber.Router, gestor, admin fiber.Handler) {
 	r.Get("/templates", h.list)
 	r.Post("/templates", gestor, h.create)
-	r.Put("/templates/:name/setores", gestor, h.setSetores)
+	r.Put("/templates/:name/setores", admin, h.setSetores)
 }
 
 // setSetores define quais departamentos podem usar um template.

@@ -192,7 +192,7 @@ func main() {
 		return cr.WABAID, cr.Token, cr.APIVersion
 	}
 	templatesRepo := templates.NewRepository(pool)
-	templates.NewHandler(templatesClient, templatesRepo).Register(api, opsOnly)
+	templates.NewHandler(templatesClient, templatesRepo).Register(api, opsOnly, adminOnly)
 	// Trava de template por departamento (atendente).
 	msgHandler.TemplateAllowed = func(ctx context.Context, template, setor string) bool {
 		ok, _ := templatesRepo.Allowed(ctx, template, setor)

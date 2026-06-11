@@ -447,7 +447,7 @@ function MinhasRespostasModal({
     if (!texto.trim()) return;
     setSaving(true);
     try {
-      await createQuickReply(atalho.trim(), texto.trim());
+      await createQuickReply(atalho.trim(), texto.trim(), true); // pessoal (modal do chat)
       setAtalho(""); setTexto("");
       onChanged();
       toast({ type: "success", title: "Resposta criada" });
