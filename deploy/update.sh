@@ -17,7 +17,12 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   pg_dump -U zapgov zapgov | gzip > "$BACKUP_DIR/zapgov-$(date +%F_%H%M).sql.gz"
 
 echo "==> git pull"
-git pull --ff-only
+# Com sudo, o git rodaria como root (sem chave SSH) — puxa como o usuário real.
+if [ -n "${SUDO_USER:-}" ]; then
+  sudo -u "$SUDO_USER" git pull --ff-only
+else
+  git pull --ff-only
+fi
 
 echo "==> Backend: rebuild + migrações"
 docker compose -f docker-compose.prod.yml up -d --build
