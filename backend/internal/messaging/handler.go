@@ -304,16 +304,16 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	}
 	mime := fh.Header.Get("Content-Type")
 
-	// Áudio gravado no navegador: converte SEMPRE pra ogg/opus mono (formato de
-	// voz do WhatsApp). Navegadores gravam webm/opus ou até mp4/opus — a Meta
-	// recusa esses (131053); ogg/opus é aceito e toca como mensagem de voz.
-	if strings.HasPrefix(mime, "audio/") && mime != "audio/ogg" {
-		if conv, err := toOggOpus(c.Context(), data); err == nil {
-			data, mime = conv, "audio/ogg"
+	// Áudio gravado no navegador: converte SEMPRE pra AAC/M4A mono (audio/mp4),
+	// o formato de áudio mais aceito pela Meta. Navegadores gravam webm/opus ou
+	// mp4/opus, recusados com 131053.
+	if strings.HasPrefix(mime, "audio/") {
+		if conv, err := toM4A(c.Context(), data); err == nil {
+			data, mime = conv, "audio/mp4"
 			if i := strings.LastIndexByte(fh.Filename, '.'); i > 0 {
 				fh.Filename = fh.Filename[:i]
 			}
-			fh.Filename += ".ogg"
+			fh.Filename += ".m4a"
 		} else {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "conversão de áudio falhou: " + err.Error()})
 		}
@@ -336,9 +336,9 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 
-// toOggOpus converte áudio (webm/mp4/etc) para ogg/opus mono — formato de voz
-// aceito pela Meta. O ffmpeg detecta o container de entrada sozinho.
-func toOggOpus(ctx context.Context, in []byte) ([]byte, error) {
+// toM4A converte áudio (webm/mp4/ogg/etc) para AAC em M4A mono — formato
+// amplamente aceito pela Meta. O ffmpeg detecta o container de entrada sozinho.
+func toM4A(ctx context.Context, in []byte) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "zg-audio-*")
 	if err != nil {
 		return nil, err
@@ -346,11 +346,13 @@ func toOggOpus(ctx context.Context, in []byte) ([]byte, error) {
 	defer os.RemoveAll(dir)
 
 	src := filepath.Join(dir, "in.bin")
-	dst := filepath.Join(dir, "out.ogg")
+	dst := filepath.Join(dir, "out.m4a")
 	if err := os.WriteFile(src, in, 0o600); err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", src, "-vn", "-c:a", "libopus", "-ac", "1", "-b:a", "32k", "-y", dst)
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", src,
+		"-vn", "-c:a", "aac", "-b:a", "64k", "-ar", "44100", "-ac", "1",
+		"-movflags", "+faststart", "-y", dst)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("ffmpeg: %v (%s)", err, lastLine(out))
 	}
