@@ -342,7 +342,15 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 	for _, st := range statuses {
 		errText := ""
 		if st.Status == "failed" {
-			errText = friendlyError(st.ErrorCode, st.ErrorTitle)
+			// Falha sem código: a Meta não detalhou (comum quando o destinatário
+			// bloqueou o número). Loga o payload bruto p/ diagnóstico.
+			if st.ErrorCode == 0 {
+				log.Printf("webhook: failed SEM código (wamid=%s, dest=%s) payload=%s",
+					st.WAMessageID, st.RecipientID, truncate(string(body), 600))
+				errText = "Falha no envio — sem detalhe da Meta (possível bloqueio pelo destinatário)"
+			} else {
+				errText = friendlyError(st.ErrorCode, st.ErrorTitle)
+			}
 			// 131026 = destinatário não tem WhatsApp → marca o contato.
 			if st.ErrorCode == 131026 && s.OnUndeliverable != nil && st.RecipientID != "" {
 				s.OnUndeliverable(ctx, CanonPhone(st.RecipientID))
@@ -356,6 +364,14 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		s.emit(ctx, 0, "status")
 	}
 	return nil
+}
+
+// truncate corta uma string para log (payloads grandes).
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // friendlyError traduz os códigos de erro mais comuns da Meta.
