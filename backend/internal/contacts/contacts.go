@@ -3,6 +3,7 @@ package contacts
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -89,13 +90,33 @@ func (r *Repository) Create(ctx context.Context, c Contact) (*Contact, error) {
 	return &out, nil
 }
 
+// pareceTelefone: "nome" composto só de dígitos/máscara de fone (erro comum:
+// atendente cola o número no campo de nome) — não vale como nome.
+func pareceTelefone(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return false
+	}
+	dig, outros := 0, 0
+	for _, r := range t {
+		switch {
+		case r >= '0' && r <= '9':
+			dig++
+		case r == ' ' || r == '(' || r == ')' || r == '-' || r == '+' || r == '.':
+		default:
+			outros++
+		}
+	}
+	return dig >= 8 && outros == 0
+}
+
 // Ensure garante que o telefone exista nos contatos (cria se não houver; se já
 // existir, atualiza o nome caso esteja com o placeholder "Contato ...").
 func (r *Repository) Ensure(ctx context.Context, nome, telefone string) error {
 	if telefone == "" {
 		return nil
 	}
-	if nome == "" {
+	if nome == "" || pareceTelefone(nome) {
 		nome = "Contato " + telefone
 	}
 	_, err := r.pool.Exec(ctx, `

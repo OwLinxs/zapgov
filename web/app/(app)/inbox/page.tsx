@@ -62,6 +62,16 @@ function nomeOuFone(c: ApiConversation) {
   return c.contact_name || c.contact_phone;
 }
 
+// pareceTelefone: "nome" que é só dígitos/máscara (atendente colou o número de
+// novo no campo de nome) — não vale como nome de contato.
+function pareceTelefone(s: string) {
+  const t = s.trim();
+  if (!t) return false;
+  const digitos = t.replace(/\D/g, "").length;
+  const naoDigitos = t.replace(/[\d\s()\-+.]/g, "").length;
+  return digitos >= 8 && naoDigitos === 0;
+}
+
 // status da conversa → badge visual
 const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
   aguardando: { cls: "badge-pending", label: "Na fila" },
@@ -137,9 +147,11 @@ function NovaConversaModal({
     try {
       const params = Array.from({ length: nVars }, (_, i) => vars[String(i + 1)] || "");
       // O backend cadastra o contato e grava o nome COMPLETO na conversa.
+      // Nome que é só o telefone repetido não vale como nome.
+      const nomeValido = pareceTelefone(nomeNovo) ? "" : nomeNovo.trim();
       await sendTemplate({
         to: destTel,
-        nome: contato?.nome || nomeNovo.trim(),
+        nome: contato?.nome || nomeValido,
         template: tpl.name,
         language: tpl.language,
         params,
@@ -194,7 +206,12 @@ function NovaConversaModal({
                 <Icon name="x" size={15} />
               </button>
             </div>
-            <Input value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} placeholder="Nome (opcional — será cadastrado ao enviar)" />
+            <Input value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} placeholder="Nome da pessoa (ex.: Maria Silva) — NÃO repita o número" />
+            {pareceTelefone(nomeNovo) && (
+              <span style={{ fontSize: 11.5, color: "var(--st-pending)" }}>
+                ⚠ Isso parece um telefone — digite o NOME da pessoa aqui (o número já está acima).
+              </span>
+            )}
           </div>
         ) : (
           <div style={{ border: "1px solid var(--border-subtle)", borderRadius: 9, overflow: "hidden" }}>
