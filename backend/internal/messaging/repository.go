@@ -493,6 +493,17 @@ func (r *Repository) SetContactNameIfEmpty(ctx context.Context, convID int64, no
 	return err
 }
 
+// SetSetor força o setor da conversa (conversa segue o atendente que iniciou
+// o atendimento por template, mesmo que tivesse setor de atendimento antigo).
+func (r *Repository) SetSetor(ctx context.Context, convID int64, setor string) error {
+	if setor == "" {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `UPDATE conversations SET setor = $2 WHERE id = $1 AND tenant_id = $3`,
+		convID, setor, tenantctx.From(ctx))
+	return err
+}
+
 // SetSetorIfEmpty define o setor da conversa apenas se ela ainda não tiver um.
 // Usado quando o atendente inicia a conversa (template/avulso): a conversa nasce
 // sem setor e, com o roteamento por setor ligado, sumiria da lista dele.

@@ -238,7 +238,12 @@ func (h *Handler) sendTemplate(c *fiber.Ctx) error {
 	// Assim, a resposta do cidadão NÃO dispara o bot (já está com humano).
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c))
 	h.tag(c, msg.ConversationID)
-	h.herdaSetor(c, msg.ConversationID)
+	// Template inicia um NOVO atendimento → a conversa vai pro setor de quem
+	// iniciou, mesmo que tivesse setor de um atendimento antigo (senão some da
+	// lista do atendente com o roteamento por setor ligado).
+	if setor, _ := c.Locals("setor").(string); setor != "" {
+		_ = h.svc.SetSetor(c.Context(), msg.ConversationID, setor)
+	}
 	// Auto-cadastro: garante o destinatário nos contatos e o nome na conversa.
 	_ = h.svc.SetContactNameIfEmpty(c.Context(), msg.ConversationID, req.Nome)
 	if h.EnsureContact != nil {

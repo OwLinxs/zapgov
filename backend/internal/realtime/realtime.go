@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/valyala/fasthttp"
@@ -88,13 +89,30 @@ func (h *Hub) Register(r fiber.Router, resolve func(token string) (int64, bool))
 			if w.Flush() != nil {
 				return
 			}
-			for e := range cl.ch {
-				b, _ := json.Marshal(e)
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
-					return
-				}
-				if w.Flush() != nil {
-					return
+			// Heartbeat: proxies derrubam conexão parada (~60s). Um comentário
+			// SSE a cada 25s mantém o stream vivo e os eventos chegando na hora.
+			tick := time.NewTicker(25 * time.Second)
+			defer tick.Stop()
+			for {
+				select {
+				case e, ok := <-cl.ch:
+					if !ok {
+						return
+					}
+					b, _ := json.Marshal(e)
+					if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+						return
+					}
+					if w.Flush() != nil {
+						return
+					}
+				case <-tick.C:
+					if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+						return
+					}
+					if w.Flush() != nil {
+						return
+					}
 				}
 			}
 		}))

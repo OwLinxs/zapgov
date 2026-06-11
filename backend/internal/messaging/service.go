@@ -459,6 +459,15 @@ func (s *Service) SetSetorIfEmpty(ctx context.Context, convID int64, setor strin
 	return s.repo.SetSetorIfEmpty(ctx, convID, setor)
 }
 
+// SetSetor força o setor da conversa (template iniciado pelo atendente).
+func (s *Service) SetSetor(ctx context.Context, convID int64, setor string) error {
+	if err := s.repo.SetSetor(ctx, convID, setor); err != nil {
+		return err
+	}
+	s.emit(ctx, 0, "conversation")
+	return nil
+}
+
 // SetContactNameIfEmpty grava o nome do contato na conversa (avulso).
 func (s *Service) SetContactNameIfEmpty(ctx context.Context, convID int64, nome string) error {
 	return s.repo.SetContactNameIfEmpty(ctx, convID, nome)
