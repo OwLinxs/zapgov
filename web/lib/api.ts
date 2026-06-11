@@ -686,6 +686,7 @@ export interface ApiQuickReply {
   id: number;
   atalho: string;
   texto: string;
+  minha: boolean; // pessoal do usuário logado (pode editar/apagar)
 }
 export const listQuickReplies = async () =>
   (await get<{ quick_replies: ApiQuickReply[] }>("/quick-replies")).quick_replies ?? [];

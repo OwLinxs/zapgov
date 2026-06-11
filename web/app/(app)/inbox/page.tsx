@@ -26,6 +26,8 @@ import {
   addNote,
   reactMessage,
   listQuickReplies,
+  createQuickReply,
+  deleteQuickReply,
   type ApiQuickReply,
   sendMedia,
   uploadMedia,
@@ -420,6 +422,113 @@ function MidiaModal({
   );
 }
 
+// Gerência das respostas rápidas pessoais do atendente (globais são só leitura).
+function MinhasRespostasModal({
+  open,
+  onClose,
+  items,
+  onChanged,
+}: {
+  open: boolean;
+  onClose: () => void;
+  items: ApiQuickReply[];
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [atalho, setAtalho] = useState("");
+  const [texto, setTexto] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) { setAtalho(""); setTexto(""); }
+  }, [open]);
+
+  async function adicionar() {
+    if (!texto.trim()) return;
+    setSaving(true);
+    try {
+      await createQuickReply(atalho.trim(), texto.trim());
+      setAtalho(""); setTexto("");
+      onChanged();
+      toast({ type: "success", title: "Resposta criada" });
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+    } finally { setSaving(false); }
+  }
+
+  async function remover(id: number) {
+    try {
+      await deleteQuickReply(id);
+      onChanged();
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+    }
+  }
+
+  const minhas = items.filter((q) => q.minha);
+  const globais = items.filter((q) => !q.minha);
+
+  return (
+    <Modal open={open} onClose={onClose} width={520}>
+      <div className="modal-head">
+        <div className="modal-title">Minhas respostas rápidas</div>
+        <div className="modal-sub">Crie atalhos pessoais — só você vê os seus.</div>
+      </div>
+      <div className="modal-body col" style={{ gap: 14, maxHeight: "62vh", overflowY: "auto" }}>
+        <div className="col" style={{ gap: 10, padding: 12, border: "1px solid var(--border-subtle)", borderRadius: 9, background: "var(--bg-sunken)" }}>
+          <Field label="Atalho (opcional)" hint="Ex.: /2via">
+            <Input value={atalho} onChange={(e) => setAtalho(e.target.value)} placeholder="/saudacao" />
+          </Field>
+          <Field label="Texto">
+            <textarea className="input" rows={3} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Olá! Como posso ajudar?" style={{ resize: "vertical", lineHeight: 1.5 }} />
+          </Field>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <Button variant="primary" size="sm" icon="plus" aria-disabled={saving || !texto.trim()} onClick={adicionar}>
+              {saving ? "Salvando…" : "Adicionar"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="col" style={{ gap: 6 }}>
+          <span className="field-label">Minhas ({minhas.length})</span>
+          {minhas.length === 0 ? (
+            <span className="muted" style={{ fontSize: 12.5 }}>Nenhuma resposta pessoal ainda.</span>
+          ) : (
+            minhas.map((q) => (
+              <div key={q.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8, fontSize: 12.5 }}>
+                <div className="col grow" style={{ gap: 1, minWidth: 0 }}>
+                  {q.atalho && <span className="strong mono" style={{ fontSize: 11.5 }}>{q.atalho}</span>}
+                  <span className="faint" style={{ fontSize: 11.5 }}>{q.texto}</span>
+                </div>
+                <button className="btn btn-ghost btn-icon btn-sm" title="Excluir" onClick={() => remover(q.id)}>
+                  <Icon name="trash" size={13} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {globais.length > 0 && (
+          <div className="col" style={{ gap: 6 }}>
+            <span className="field-label">Do órgão ({globais.length}) — somente leitura</span>
+            {globais.map((q) => (
+              <div key={q.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8, fontSize: 12.5, opacity: 0.8 }}>
+                <div className="col grow" style={{ gap: 1, minWidth: 0 }}>
+                  {q.atalho && <span className="strong mono" style={{ fontSize: 11.5 }}>{q.atalho}</span>}
+                  <span className="faint" style={{ fontSize: 11.5 }}>{q.texto}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="modal-foot">
+        <Button variant="primary" className="btn-block" onClick={onClose}>Fechar</Button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function InboxPage() {
   const toast = useToast();
   const { user } = useAuth();
@@ -438,6 +547,7 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [notaMode, setNotaMode] = useState(false);
   const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
+  const [qrOpen, setQrOpen] = useState(false); // modal "minhas respostas rápidas"
   // Gravação de áudio (MediaRecorder).
   const [gravando, setGravando] = useState(false);
   const [recSeg, setRecSeg] = useState(0);
@@ -1029,28 +1139,36 @@ export default function InboxPage() {
                   <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Enviar mídia" onClick={() => setMidiaOpen(true)}>
                     <Icon name="attach" size={18} />
                   </button>
-                  {quickReplies.length > 0 && (
-                    <Dropdown
-                      up
-                      trigger={
-                        <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Respostas rápidas">
-                          <Icon name="zap" size={18} />
-                        </button>
-                      }
-                    >
-                      <div className="dropdown-label">Respostas rápidas</div>
-                      <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                        {quickReplies.map((qr) => (
-                          <div key={qr.id} className="dropdown-item" style={{ alignItems: "flex-start" }} onClick={() => setDraft((d) => (d ? d + " " : "") + qr.texto)}>
-                            <div className="col" style={{ gap: 1, minWidth: 0 }}>
+                  <Dropdown
+                    up
+                    trigger={
+                      <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Respostas rápidas">
+                        <Icon name="zap" size={18} />
+                      </button>
+                    }
+                  >
+                    <div className="dropdown-label">Respostas rápidas</div>
+                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                      {quickReplies.length === 0 && (
+                        <div className="dropdown-item muted">Nenhuma ainda — crie a sua ↓</div>
+                      )}
+                      {quickReplies.map((qr) => (
+                        <div key={qr.id} className="dropdown-item" style={{ alignItems: "flex-start" }} onClick={() => setDraft((d) => (d ? d + " " : "") + qr.texto)}>
+                          <div className="col" style={{ gap: 1, minWidth: 0 }}>
+                            <span className="row center" style={{ gap: 6 }}>
                               {qr.atalho && <span className="strong" style={{ fontSize: 12 }}>{qr.atalho}</span>}
-                              <span className="faint" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{qr.texto}</span>
-                            </div>
+                              {qr.minha && <span className="badge badge-neutral" style={{ fontSize: 9 }}>minha</span>}
+                            </span>
+                            <span className="faint" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{qr.texto}</span>
                           </div>
-                        ))}
-                      </div>
-                    </Dropdown>
-                  )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="dropdown-sep" />
+                    <div className="dropdown-item" onClick={() => setQrOpen(true)}>
+                      <Icon name="settings" size={14} /> Gerenciar minhas respostas
+                    </div>
+                  </Dropdown>
                   <button
                     className={"btn btn-icon" + (notaMode ? "" : " btn-ghost")}
                     style={{ height: 42, width: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, color: notaMode ? "var(--st-pending)" : undefined }}
@@ -1090,6 +1208,13 @@ export default function InboxPage() {
           <EmptyState icon="message" title="Selecione uma conversa" sub="Escolha um contato na lista para ver o histórico e responder." />
         </div>
       )}
+
+      <MinhasRespostasModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        items={quickReplies}
+        onChanged={() => listQuickReplies().then(setQuickReplies).catch(() => {})}
+      />
 
       <NovaConversaModal
         open={novaOpen}
