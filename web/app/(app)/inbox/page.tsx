@@ -836,15 +836,16 @@ export default function InboxPage() {
   // Conversas ativas no filtro atual (podem ser finalizadas em massa).
   const ativasFiltradas = filtered.filter((c) => c.status !== "resolvido");
 
-  // Busca com 2+ caracteres: pesquisa no BANCO INTEIRO (qualquer aba) — nome,
-  // telefone, CPF do contato e conteúdo das mensagens.
-  const buscandoServer = q.trim().length >= 2;
+  // Server-side: busca com 2+ caracteres (qualquer aba) — nome, telefone, CPF
+  // e conteúdo das mensagens — E a aba Finalizados SEMPRE (senão ela mostraria
+  // só as resolvidas dentro das ~100 conversas recentes carregadas).
+  const buscandoServer = q.trim().length >= 2 || filter === "resolvido";
   useEffect(() => {
     if (!buscandoServer) { setFinBusca([]); return; }
     const t = setTimeout(() => {
       // 'ativas' = todas menos resolvidas (aba "Todas"); senão o status da aba.
       const status = filter === "" ? "ativas" : filter;
-      listConversations({ status, q: q.trim(), setor: setorFiltro, limit: 200 })
+      listConversations({ status, q: q.trim().length >= 2 ? q.trim() : "", setor: setorFiltro, limit: 200 })
         .then(setFinBusca)
         .catch(() => setFinBusca([]));
     }, 350);
