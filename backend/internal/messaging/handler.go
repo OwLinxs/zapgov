@@ -304,12 +304,16 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	}
 	mime := fh.Header.Get("Content-Type")
 
-	// Áudio gravado no navegador (webm/opus) não é aceito pela Meta →
-	// converte pra ogg/opus mono via ffmpeg.
-	if strings.HasPrefix(mime, "audio/webm") {
-		if conv, err := webmToOgg(c.Context(), data); err == nil {
+	// Áudio gravado no navegador: converte SEMPRE pra ogg/opus mono (formato de
+	// voz do WhatsApp). Navegadores gravam webm/opus ou até mp4/opus — a Meta
+	// recusa esses (131053); ogg/opus é aceito e toca como mensagem de voz.
+	if strings.HasPrefix(mime, "audio/") && mime != "audio/ogg" {
+		if conv, err := toOggOpus(c.Context(), data); err == nil {
 			data, mime = conv, "audio/ogg"
-			fh.Filename = strings.TrimSuffix(fh.Filename, ".webm") + ".ogg"
+			if i := strings.LastIndexByte(fh.Filename, '.'); i > 0 {
+				fh.Filename = fh.Filename[:i]
+			}
+			fh.Filename += ".ogg"
 		} else {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "conversão de áudio falhou: " + err.Error()})
 		}
@@ -332,16 +336,16 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(msg)
 }
 
-// webmToOgg converte áudio webm/opus (gravação do navegador) para ogg/opus
-// mono — formato de voz aceito pela Meta. Requer ffmpeg na imagem.
-func webmToOgg(ctx context.Context, in []byte) ([]byte, error) {
+// toOggOpus converte áudio (webm/mp4/etc) para ogg/opus mono — formato de voz
+// aceito pela Meta. O ffmpeg detecta o container de entrada sozinho.
+func toOggOpus(ctx context.Context, in []byte) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "zg-audio-*")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
 
-	src := filepath.Join(dir, "in.webm")
+	src := filepath.Join(dir, "in.bin")
 	dst := filepath.Join(dir, "out.ogg")
 	if err := os.WriteFile(src, in, 0o600); err != nil {
 		return nil, err

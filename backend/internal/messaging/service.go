@@ -215,7 +215,7 @@ func (s *Service) SendMedia(ctx context.Context, to, kind, link, caption, name s
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.InsertOutboundMedia(ctx, convID, res.WAMessageID, caption, kind, name)
+	return s.repo.InsertOutboundMedia(ctx, convID, res.WAMessageID, caption, kind, name, "")
 }
 
 // SendMediaUpload sobe um arquivo pra Meta e envia por media_id (upload direto,
@@ -243,7 +243,7 @@ func (s *Service) SendMediaUpload(ctx context.Context, to, kind string, data []b
 	if err != nil {
 		return nil, err
 	}
-	m, err := s.repo.InsertOutboundMedia(ctx, convID, res.WAMessageID, caption, kind, filename)
+	m, err := s.repo.InsertOutboundMedia(ctx, convID, res.WAMessageID, caption, kind, filename, id)
 	if err == nil {
 		s.emit(ctx, convID, "message")
 	}

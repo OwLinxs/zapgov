@@ -184,18 +184,19 @@ func (r *Repository) InsertOutbound(ctx context.Context, convID int64, waMessage
 	return m, nil
 }
 
-// InsertOutboundMedia grava uma mídia enviada (com legenda e tipo).
-func (r *Repository) InsertOutboundMedia(ctx context.Context, convID int64, waMessageID, caption, kind, name string) (*Message, error) {
+// InsertOutboundMedia grava uma mídia enviada. mediaID (quando upload) permite
+// reproduzir/exibir a mídia enviada no chat via proxy.
+func (r *Repository) InsertOutboundMedia(ctx context.Context, convID int64, waMessageID, caption, kind, name, mediaID string) (*Message, error) {
 	sid, err := r.ensureOpenSession(ctx, convID)
 	if err != nil {
 		return nil, err
 	}
 	m := &Message{}
 	err = r.pool.QueryRow(ctx, `
-		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status, media_type, media_name)
-		VALUES ($7, $1, $2, $3, 'out', $4, 'sent', $5, $6)
+		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status, media_type, media_name, media_id)
+		VALUES ($7, $1, $2, $3, 'out', $4, 'sent', $5, $6, $8)
 		RETURNING `+msgCols,
-		convID, sid, waMessageID, caption, kind, name, tenantctx.From(ctx),
+		convID, sid, waMessageID, caption, kind, name, tenantctx.From(ctx), mediaID,
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
 		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
 	return m, err
