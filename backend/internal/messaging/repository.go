@@ -320,9 +320,19 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 			ORDER BY created_at DESC
 			LIMIT 1
 		) m ON true
-		WHERE c.tenant_id = $5 AND ($2 = '' OR c.setor = $2) AND ($3 = '' OR c.status = $3)
+		WHERE c.tenant_id = $5 AND ($2 = '' OR c.setor = $2)
+		  -- status: '' = todos; 'ativas' = não-resolvidas; senão igual.
+		  AND ($3 = '' OR ($3 = 'ativas' AND c.status <> 'resolvido') OR c.status = $3)
 		  AND ($4 = false OR c.status <> '')
-		  AND ($6 = '' OR c.contact_name ILIKE '%'||$6||'%' OR c.contact_phone ILIKE '%'||$6||'%')
+		  -- busca: nome, telefone, CPF (via contato) ou conteúdo das mensagens.
+		  AND ($6 = ''
+		       OR c.contact_name ILIKE '%'||$6||'%'
+		       OR c.contact_phone ILIKE '%'||$6||'%'
+		       OR EXISTS (SELECT 1 FROM contacts ct
+		                  WHERE ct.tenant_id = c.tenant_id AND ct.telefone = c.contact_phone
+		                    AND ct.cpf <> '' AND ct.cpf ILIKE '%'||$6||'%')
+		       OR EXISTS (SELECT 1 FROM messages mm
+		                  WHERE mm.conversation_id = c.id AND mm.body ILIKE '%'||$6||'%'))
 		ORDER BY c.last_msg_at DESC
 		LIMIT $1`,
 		limit, setor, status, soAtendimento, tenantctx.From(ctx), q,

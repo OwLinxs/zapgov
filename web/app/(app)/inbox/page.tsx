@@ -682,20 +682,23 @@ export default function InboxPage() {
   // Conversas ativas no filtro atual (podem ser finalizadas em massa).
   const ativasFiltradas = filtered.filter((c) => c.status !== "resolvido");
 
-  // Em Finalizados + busca: pesquisa no banco inteiro (não só nos ~100 carregados).
-  const buscandoFin = filter === "resolvido" && q.trim().length >= 2;
+  // Busca com 2+ caracteres: pesquisa no BANCO INTEIRO (qualquer aba) — nome,
+  // telefone, CPF do contato e conteúdo das mensagens.
+  const buscandoServer = q.trim().length >= 2;
   useEffect(() => {
-    if (!buscandoFin) { setFinBusca([]); return; }
+    if (!buscandoServer) { setFinBusca([]); return; }
     const t = setTimeout(() => {
-      listConversations({ status: "resolvido", q: q.trim(), setor: setorFiltro, limit: 200 })
+      // 'ativas' = todas menos resolvidas (aba "Todas"); senão o status da aba.
+      const status = filter === "" ? "ativas" : filter;
+      listConversations({ status, q: q.trim(), setor: setorFiltro, limit: 200 })
         .then(setFinBusca)
         .catch(() => setFinBusca([]));
     }, 350);
     return () => clearTimeout(t);
-  }, [buscandoFin, q, setorFiltro]);
+  }, [buscandoServer, q, filter, setorFiltro]);
 
-  // Lista exibida: busca server-side em Finalizados, senão o filtro local.
-  const lista = buscandoFin
+  // Lista exibida: busca server-side quando há termo, senão o filtro local.
+  const lista = buscandoServer
     ? finBusca.filter((c) => atendenteFiltro === "Todos" || c.atendente === atendenteFiltro)
     : filtered;
 
@@ -750,7 +753,7 @@ export default function InboxPage() {
           </div>
           <div className="row" style={{ gap: 8 }}>
             <div className="grow">
-              <Input icon="search" placeholder="Buscar nome ou telefone…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input icon="search" placeholder="Buscar nome, telefone, CPF ou mensagem…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <select className="select" style={{ width: "auto" }} value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}>
               <option>Todos</option>
@@ -789,7 +792,7 @@ export default function InboxPage() {
           {erro ? (
             <EmptyState icon="alertCircle" title="API indisponível" sub={erro} />
           ) : lista.length === 0 ? (
-            <EmptyState icon="message" title={buscandoFin ? "Nada encontrado" : "Nenhuma conversa"} sub={buscandoFin ? "Nenhuma finalizada com esse nome/telefone." : "Envie ou receba uma mensagem para começar."} />
+            <EmptyState icon="message" title={buscandoServer ? "Nada encontrado" : "Nenhuma conversa"} sub={buscandoServer ? "Nada com esse nome, telefone, CPF ou conteúdo." : "Envie ou receba uma mensagem para começar."} />
           ) : (
             lista.map((c) => (
               <div
