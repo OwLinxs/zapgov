@@ -55,17 +55,22 @@ type Message struct {
 	MediaID        string    `json:"media_id"`
 	MediaMime      string    `json:"media_mime"`
 	MediaName      string    `json:"media_name"`
-	Autor          string    `json:"autor"`    // quem escreveu (notas internas)
-	Reaction       string    `json:"reaction"` // emoji da reação (vazio = sem)
-	Error          string    `json:"error"`    // motivo da falha (status failed)
+	Autor          string    `json:"autor"`         // quem escreveu (notas internas)
+	Reaction       string    `json:"reaction"`      // emoji da reação (vazio = sem)
+	Error          string    `json:"error"`         // motivo da falha (status failed)
+	ReplyTo        string    `json:"reply_to"`      // wa_message_id citado (responder)
+	ReplyPreview   string    `json:"reply_preview"` // corpo da mensagem citada (p/ UI)
 }
 
-const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor, reaction, COALESCE(error, '')`
+// reply_preview: corpo da mensagem citada, resolvido por subquery (índice único
+// tenant+wa_message_id torna a busca barata; reply_to vazio não casa nada).
+const msgCols = `id, conversation_id, wa_message_id, direction, body, status, created_at, media_type, media_id, media_mime, media_name, autor, reaction, COALESCE(error, ''), COALESCE(reply_to, ''),
+	COALESCE((SELECT r.body FROM messages r WHERE r.tenant_id = messages.tenant_id AND r.wa_message_id = messages.reply_to LIMIT 1), '')`
 
 func scanMessage(row pgx.CollectableRow) (Message, error) {
 	var m Message
 	err := row.Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error, &m.ReplyTo, &m.ReplyPreview)
 	return m, err
 }
 
@@ -98,7 +103,7 @@ func (r *Repository) AddNote(ctx context.Context, convID int64, autor, body stri
 		RETURNING `+msgCols,
 		convID, sid, waID, body, autor, tenantctx.From(ctx),
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error, &m.ReplyTo, &m.ReplyPreview)
 	return m, err
 }
 
@@ -166,19 +171,20 @@ func (r *Repository) ensureOpenSession(ctx context.Context, convID int64) (int64
 }
 
 // InsertOutbound grava uma mensagem enviada (ligada à sessão aberta).
-func (r *Repository) InsertOutbound(ctx context.Context, convID int64, waMessageID, body string) (*Message, error) {
+// replyTo (opcional) é o wa_message_id citado.
+func (r *Repository) InsertOutbound(ctx context.Context, convID int64, waMessageID, body, replyTo string) (*Message, error) {
 	sid, err := r.ensureOpenSession(ctx, convID)
 	if err != nil {
 		return nil, err
 	}
 	m := &Message{}
 	err = r.pool.QueryRow(ctx, `
-		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status)
-		VALUES ($5, $1, $2, $3, 'out', $4, 'sent')
+		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status, reply_to)
+		VALUES ($5, $1, $2, $3, 'out', $4, 'sent', $6)
 		RETURNING `+msgCols,
-		convID, sid, waMessageID, body, tenantctx.From(ctx),
+		convID, sid, waMessageID, body, tenantctx.From(ctx), replyTo,
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error, &m.ReplyTo, &m.ReplyPreview)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +205,7 @@ func (r *Repository) InsertOutboundMedia(ctx context.Context, convID int64, waMe
 		RETURNING `+msgCols,
 		convID, sid, waMessageID, caption, kind, name, tenantctx.From(ctx), mediaID,
 	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
-		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error)
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error, &m.ReplyTo, &m.ReplyPreview)
 	return m, err
 }
 
@@ -213,17 +219,17 @@ type MediaInfo struct {
 
 // InsertInbound grava uma mensagem recebida (idempotente por wa_message_id) e
 // reabre a janela de 24h. Retorna false se já existia (evento reentregue).
-func (r *Repository) InsertInbound(ctx context.Context, convID int64, waMessageID, body string, ts time.Time, media MediaInfo) (bool, error) {
+func (r *Repository) InsertInbound(ctx context.Context, convID int64, waMessageID, body string, ts time.Time, media MediaInfo, replyTo string) (bool, error) {
 	sid, err := r.ensureOpenSession(ctx, convID)
 	if err != nil {
 		return false, err
 	}
 	tag, err := r.pool.Exec(ctx, `
 		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status, created_at,
-		                      media_type, media_id, media_mime, media_name)
-		VALUES ($10, $1, $2, $3, 'in', $4, 'received', $5, $6, $7, $8, $9)
+		                      media_type, media_id, media_mime, media_name, reply_to)
+		VALUES ($10, $1, $2, $3, 'in', $4, 'received', $5, $6, $7, $8, $9, $11)
 		ON CONFLICT (tenant_id, wa_message_id) DO NOTHING`,
-		convID, sid, waMessageID, body, ts, media.Type, media.ID, media.Mime, media.Name, tenantctx.From(ctx),
+		convID, sid, waMessageID, body, ts, media.Type, media.ID, media.Mime, media.Name, tenantctx.From(ctx), replyTo,
 	)
 	if err != nil {
 		return false, err
@@ -295,14 +301,22 @@ func (r *Repository) WindowOpen(ctx context.Context, phone string) (bool, error)
 }
 
 // UpdateStatus avança o status de uma mensagem enviada (por wa_message_id),
-// guardando o motivo quando for falha.
-func (r *Repository) UpdateStatus(ctx context.Context, waMessageID, status, errText string) error {
-	_, err := r.pool.Exec(ctx, `
-		UPDATE messages SET status = $2, error = COALESCE(NULLIF($4,''), error), updated_at = now()
-		WHERE wa_message_id = $1 AND direction = 'out' AND tenant_id = $3`,
+// guardando o motivo quando for falha. Devolve o campaign_id da mensagem (0 se
+// não é de campanha) e o status ANTERIOR — usados pelos contadores do disparo.
+func (r *Repository) UpdateStatus(ctx context.Context, waMessageID, status, errText string) (campaignID int64, oldStatus string, err error) {
+	err = r.pool.QueryRow(ctx, `
+		UPDATE messages m
+		SET status = $2, error = COALESCE(NULLIF($4,''), m.error), updated_at = now()
+		FROM (SELECT id, status, campaign_id FROM messages
+		      WHERE wa_message_id = $1 AND direction = 'out' AND tenant_id = $3) o
+		WHERE m.id = o.id
+		RETURNING COALESCE(o.campaign_id, 0), o.status`,
 		waMessageID, status, tenantctx.From(ctx), errText,
-	)
-	return err
+	).Scan(&campaignID, &oldStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, "", nil // mensagem desconhecida (ex.: enviada antes da migração)
+	}
+	return campaignID, oldStatus, err
 }
 
 // ListConversations devolve as conversas (filtro opcional por setor/status),
@@ -471,7 +485,7 @@ func (r *Repository) SetLabels(ctx context.Context, convID int64, labelIDs []int
 	return err
 }
 
-// Enqueue coloca uma conversa em fase de bot ('') na fila (aguardando), para o
+// Enqueue coloca uma conversa em fase de bot (”) na fila (aguardando), para o
 // atendente assumir. Usado quando o chatbot está desligado.
 func (r *Repository) Enqueue(ctx context.Context, convID int64) error {
 	_, err := r.pool.Exec(ctx, `
@@ -587,7 +601,7 @@ func (r *Repository) AutoResolveExpired(ctx context.Context) (int, error) {
 	return int(tag.RowsAffected()), nil
 }
 
-// ConversationStatus devolve o status atual da conversa ('', aguardando, em_atendimento, resolvido).
+// ConversationStatus devolve o status atual da conversa (”, aguardando, em_atendimento, resolvido).
 func (r *Repository) ConversationStatus(ctx context.Context, convID int64) (string, error) {
 	var status string
 	err := r.pool.QueryRow(ctx, `SELECT status FROM conversations WHERE id = $1 AND tenant_id = $2`, convID, tenantctx.From(ctx)).Scan(&status)

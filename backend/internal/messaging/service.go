@@ -67,6 +67,11 @@ type Service struct {
 	// pesquisa de satisfação. true = consumida (a conversa volta a resolvida e
 	// nem bot nem fila são acionados).
 	OnSurveyAnswer func(ctx context.Context, convID int64, buttonID, body, from string) bool
+
+	// OnCampaignStatus, se definido, é chamado quando o status de uma mensagem
+	// de CAMPANHA muda (webhook) — atualiza os contadores do disparo
+	// (entregues/lidas/falhas) sem acoplar messaging ao pacote campaigns.
+	OnCampaignStatus func(ctx context.Context, campaignID int64, oldStatus, newStatus string)
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -99,6 +104,12 @@ func NewService(repo *Repository, provider MessageProvider) *Service {
 // SendText envia uma mensagem de texto única (síncrono): chama o provider e,
 // se aceito pela Meta, persiste com o wa_message_id retornado.
 func (s *Service) SendText(ctx context.Context, to, body string) (*Message, error) {
+	return s.SendTextReply(ctx, to, body, "")
+}
+
+// SendTextReply envia texto citando uma mensagem anterior (replyTo =
+// wa_message_id alvo; vazio = sem citação).
+func (s *Service) SendTextReply(ctx context.Context, to, body, replyTo string) (*Message, error) {
 	if to == "" || body == "" {
 		return nil, fmt.Errorf("destinatário e corpo são obrigatórios")
 	}
@@ -117,7 +128,7 @@ func (s *Service) SendText(ctx context.Context, to, body string) (*Message, erro
 		return nil, ErrWindowClosed
 	}
 
-	res, err := s.providerFor(ctx).Send(ctx, OutgoingMessage{To: to, Body: body})
+	res, err := s.providerFor(ctx).Send(ctx, OutgoingMessage{To: to, Body: body, ReplyTo: replyTo})
 	if err != nil {
 		return nil, fmt.Errorf("envio falhou: %w", err)
 	}
@@ -127,7 +138,7 @@ func (s *Service) SendText(ctx context.Context, to, body string) (*Message, erro
 		return nil, fmt.Errorf("garantir conversa: %w", err)
 	}
 
-	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body)
+	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body, replyTo)
 	if err != nil {
 		return nil, fmt.Errorf("persistir mensagem: %w", err)
 	}
@@ -166,7 +177,7 @@ func (s *Service) SendTemplate(ctx context.Context, to, name, lang string, param
 	if body == "" {
 		body = "[modelo: " + name + "]"
 	}
-	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body)
+	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body, "")
 	if err != nil {
 		return nil, fmt.Errorf("persistir mensagem: %w", err)
 	}
@@ -194,7 +205,7 @@ func (s *Service) SendMenu(ctx context.Context, to, text string, options []MenuO
 	for _, o := range options {
 		body += "\n" + o.Key + " - " + o.Label
 	}
-	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body)
+	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body, "")
 	if err == nil {
 		s.emit(ctx, convID, "message")
 	}
@@ -283,7 +294,7 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 			continue
 		}
 		inserted, err := s.repo.InsertInbound(ctx, convID, in.WAMessageID, in.Body, in.Timestamp,
-			MediaInfo{Type: in.MediaType, ID: in.MediaID, Mime: in.MediaMime, Name: in.MediaName})
+			MediaInfo{Type: in.MediaType, ID: in.MediaID, Mime: in.MediaMime, Name: in.MediaName}, in.ReplyTo)
 		if err != nil {
 			log.Printf("webhook: inserir inbound %s: %v", in.WAMessageID, err)
 			continue
@@ -369,8 +380,12 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 				s.OnUndeliverable(ctx, CanonPhone(st.RecipientID))
 			}
 		}
-		if err := s.repo.UpdateStatus(ctx, st.WAMessageID, st.Status, errText); err != nil {
+		campID, oldStatus, err := s.repo.UpdateStatus(ctx, st.WAMessageID, st.Status, errText)
+		if err != nil {
 			log.Printf("webhook: atualizar status %s: %v", st.WAMessageID, err)
+		} else if campID > 0 && oldStatus != st.Status && s.OnCampaignStatus != nil {
+			// Mensagem de campanha mudou de status → atualiza os contadores do disparo.
+			s.OnCampaignStatus(ctx, campID, oldStatus, st.Status)
 		}
 	}
 	if len(statuses) > 0 {

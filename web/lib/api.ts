@@ -48,6 +48,8 @@ export interface ApiMessage {
   autor?: string;    // quem escreveu (notas internas)
   reaction?: string; // emoji de reação (vazio = sem)
   error?: string;    // motivo da falha (status failed)
+  reply_to?: string;      // wa_message_id citado (responder mensagem)
+  reply_preview?: string; // corpo da mensagem citada (exibição)
 }
 
 // Baixa a mídia (com auth) e devolve um object URL para exibir.
@@ -584,6 +586,15 @@ export interface ApiSatisfacao {
 }
 export const getSatisfacao = () => get<ApiSatisfacao>("/metrics/satisfacao");
 
+// Heatmap de horário de pico: mensagens recebidas por dia da semana e hora (30d).
+export interface ApiHeatCell {
+  dia: number; // 0=Dom..6=Sáb
+  hora: number; // 0-23
+  total: number;
+}
+export const getHeatmap = async () =>
+  (await get<{ cells: ApiHeatCell[] }>("/metrics/heatmap")).cells ?? [];
+
 // Baixa um relatório CSV (com auth) e dispara o download.
 export async function downloadReport(tipo: "atendentes" | "setores" | "diario" | "satisfacao", from: string, to: string): Promise<void> {
   const qs = new URLSearchParams();
@@ -715,8 +726,8 @@ async function del(path: string): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error(`DELETE ${path} → ${res.status}`);
 }
 
-export async function sendMessage(to: string, body: string): Promise<ApiMessage> {
-  return post<ApiMessage>("/messages/send", { to, body });
+export async function sendMessage(to: string, body: string, replyTo?: string): Promise<ApiMessage> {
+  return post<ApiMessage>("/messages/send", { to, body, reply_to: replyTo || "" });
 }
 
 export async function addNote(convId: number, body: string): Promise<ApiMessage> {

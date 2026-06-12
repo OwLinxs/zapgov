@@ -46,6 +46,12 @@ type sendPayload struct {
 	To               string      `json:"to"`
 	Type             string      `json:"type"`
 	Text             textPayload `json:"text"`
+	// Context cita uma mensagem anterior (responder/quote).
+	Context *msgContext `json:"context,omitempty"`
+}
+
+type msgContext struct {
+	MessageID string `json:"message_id"`
 }
 
 type textPayload struct {
@@ -73,6 +79,9 @@ func (p *Provider) Send(ctx context.Context, msg messaging.OutgoingMessage) (mes
 		To:               normalizePhone(msg.To),
 		Type:             "text",
 		Text:             textPayload{Body: msg.Body},
+	}
+	if msg.ReplyTo != "" {
+		payload.Context = &msgContext{MessageID: msg.ReplyTo}
 	}
 	return p.postMessage(ctx, url, payload)
 }
@@ -247,6 +256,9 @@ type webhookEnvelope struct {
 					ID        string `json:"id"`
 					Timestamp string `json:"timestamp"`
 					Type      string `json:"type"`
+					Context   *struct {
+						ID string `json:"id"` // wa_message_id citado (reply do cidadão)
+					} `json:"context"`
 					Text      struct {
 						Body string `json:"body"`
 					} `json:"text"`
@@ -325,6 +337,9 @@ func (p *Provider) ParseWebhook(body []byte) ([]messaging.IncomingMessage, []mes
 					From:        m.From,
 					Name:        nameByWaID[m.From],
 					Timestamp:   parseUnix(m.Timestamp),
+				}
+				if m.Context != nil {
+					im.ReplyTo = m.Context.ID
 				}
 				switch m.Type {
 				case "text":

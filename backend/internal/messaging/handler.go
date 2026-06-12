@@ -177,8 +177,9 @@ func (h *Handler) optIn(c *fiber.Ctx) error {
 }
 
 type sendRequest struct {
-	To   string `json:"to"`
-	Body string `json:"body"`
+	To      string `json:"to"`
+	Body    string `json:"body"`
+	ReplyTo string `json:"reply_to"` // wa_message_id citado (responder mensagem)
 }
 
 func (h *Handler) sendMessage(c *fiber.Ctx) error {
@@ -187,7 +188,7 @@ func (h *Handler) sendMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
 	}
 
-	msg, err := h.svc.SendText(c.Context(), req.To, h.assina(c, req.Body))
+	msg, err := h.svc.SendTextReply(c.Context(), req.To, h.assina(c, req.Body), req.ReplyTo)
 	if errors.Is(err, ErrWindowClosed) {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error(), "window_closed": true})
 	}

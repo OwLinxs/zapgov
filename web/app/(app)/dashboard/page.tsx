@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/shell/Topbar";
 import {
@@ -15,8 +15,8 @@ import {
 } from "@/components/ui";
 import { SETOR_COR } from "@/lib/data";
 import {
-  getKpis, getVolume, getActivity, getAtendentes, getSatisfacao,
-  type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat, type ApiSatisfacao,
+  getKpis, getVolume, getActivity, getAtendentes, getSatisfacao, getHeatmap,
+  type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat, type ApiSatisfacao, type ApiHeatCell,
 } from "@/lib/api";
 import { IconName } from "@/lib/icons";
 
@@ -61,6 +61,64 @@ function KpiCard({
   );
 }
 
+const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+// HeatmapCard: grade 7 dias × 24 horas com intensidade proporcional ao volume
+// de mensagens recebidas — mostra os horários de pico do atendimento.
+function HeatmapCard({ cells }: { cells: ApiHeatCell[] }) {
+  const mapa = new Map<string, number>();
+  let max = 0;
+  for (const c of cells) {
+    mapa.set(c.dia + ":" + c.hora, c.total);
+    if (c.total > max) max = c.total;
+  }
+  // pico (célula mais quente) para o subtítulo
+  const pico = cells.reduce((a, b) => (b.total > a.total ? b : a), { dia: 0, hora: 0, total: 0 });
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div>
+          <div className="card-title">Horário de pico</div>
+          <div className="card-sub">
+            Mensagens recebidas por dia/hora (30 dias)
+            {pico.total > 0 && ` · pico: ${DIAS[pico.dia]} ${String(pico.hora).padStart(2, "0")}h`}
+          </div>
+        </div>
+      </div>
+      <div className="card-pad" style={{ overflowX: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "34px repeat(24, 1fr)", gap: 3, minWidth: 640 }}>
+          <span />
+          {Array.from({ length: 24 }, (_, h) => (
+            <span key={h} className="mono faint" style={{ fontSize: 9.5, textAlign: "center" }}>
+              {h % 3 === 0 ? h : ""}
+            </span>
+          ))}
+          {DIAS.map((d, dia) => (
+            <Fragment key={d}>
+              <span className="faint" style={{ fontSize: 10.5, fontWeight: 600, alignSelf: "center" }}>{d}</span>
+              {Array.from({ length: 24 }, (_, h) => {
+                const v = mapa.get(dia + ":" + h) || 0;
+                const pct = max > 0 ? Math.round((v / max) * 100) : 0;
+                return (
+                  <div
+                    key={h}
+                    title={`${d} ${String(h).padStart(2, "0")}h — ${v} mensagem${v === 1 ? "" : "s"}`}
+                    style={{
+                      height: 16, borderRadius: 3,
+                      background: v === 0 ? "var(--bg-sunken)" : `color-mix(in oklch, var(--wa) ${Math.max(pct, 12)}%, var(--bg-sunken))`,
+                    }}
+                  />
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [periodo, setPeriodo] = useState<"hora" | "dia">("hora");
@@ -69,20 +127,22 @@ export default function DashboardPage() {
   const [atividade, setAtividade] = useState<ApiAtividade[]>([]);
   const [atendentes, setAtendentes] = useState<ApiAtendenteStat[]>([]);
   const [sat, setSat] = useState<ApiSatisfacao | null>(null);
+  const [heat, setHeat] = useState<ApiHeatCell[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (p: "hora" | "dia") => {
     setLoading(true);
     try {
-      const [k, v, a, at, sa] = await Promise.all([
+      const [k, v, a, at, sa, hm] = await Promise.all([
         getKpis(), getVolume(p), getActivity(), getAtendentes().catch(() => []),
-        getSatisfacao().catch(() => null),
+        getSatisfacao().catch(() => null), getHeatmap().catch(() => []),
       ]);
       setKpis(k);
       setDados(v);
       setAtividade(a);
       setAtendentes(at);
       setSat(sa);
+      setHeat(hm);
     } catch { /* mantém o que já tem */ } finally {
       setLoading(false);
     }
@@ -222,6 +282,9 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* Horário de pico (heatmap de mensagens recebidas, 30 dias) */}
+          {heat.length > 0 && <HeatmapCard cells={heat} />}
 
           {/* Feed de atividade */}
           <div className="card">

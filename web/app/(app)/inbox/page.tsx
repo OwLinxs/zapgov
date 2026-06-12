@@ -575,6 +575,7 @@ export default function InboxPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [notaMode, setNotaMode] = useState(false);
+  const [replyTo, setReplyTo] = useState<ApiMessage | null>(null); // mensagem citada (responder)
   const [quickReplies, setQuickReplies] = useState<ApiQuickReply[]>([]);
   const [qrOpen, setQrOpen] = useState(false); // modal "minhas respostas rápidas"
   const [slashOff, setSlashOff] = useState(false); // autocomplete / dispensado (Esc/selecionou)
@@ -813,6 +814,7 @@ export default function InboxPage() {
   // Mensagens ao selecionar a conversa (+ fallback lento; o SSE cobre o tempo real).
   useEffect(() => {
     if (activeId == null) return;
+    setReplyTo(null); // trocar de conversa descarta a citação pendente
     loadMsgs(activeId);
     const t = setInterval(() => loadMsgs(activeId), 15000);
     return () => clearInterval(t);
@@ -891,7 +893,8 @@ export default function InboxPage() {
       if (notaMode) {
         await addNote(active.id, texto);
       } else {
-        await sendMessage(active.contact_phone, texto);
+        await sendMessage(active.contact_phone, texto, replyTo?.wa_message_id);
+        setReplyTo(null);
       }
       await loadMsgs(active.id);
       loadConvs();
@@ -1184,7 +1187,7 @@ export default function InboxPage() {
                 Sem mensagens ainda.
               </div>
             ) : (
-              msgs.map((m) => <MessageItem key={m.id} m={m} onReact={reagir} />)
+              msgs.map((m) => <MessageItem key={m.id} m={m} onReact={reagir} onReply={setReplyTo} />)
             )}
           </div>
 
@@ -1195,6 +1198,21 @@ export default function InboxPage() {
               </div>
             ) : (
               <>
+                {replyTo && !notaMode && (
+                  <div className="row center" style={{ gap: 10, marginBottom: 8, padding: "7px 10px", borderRadius: 9, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)" }}>
+                    <div className="col grow" style={{ gap: 1, borderLeft: "3px solid var(--wa)", paddingLeft: 9, minWidth: 0 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa)" }}>
+                        Respondendo a {replyTo.direction === "in" ? nomeOuFone(active) : "você"}
+                      </span>
+                      <span className="faint" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {replyTo.body || (replyTo.media_type ? "[" + replyTo.media_type + "]" : "")}
+                      </span>
+                    </div>
+                    <button className="btn btn-ghost btn-icon btn-sm" title="Cancelar resposta" onClick={() => setReplyTo(null)}>
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                )}
                 {gravando ? (
                   <div className="row center" style={{ gap: 12, height: 42 }}>
                     <span style={{ width: 10, height: 10, borderRadius: 99, background: "var(--st-failed)", animation: "pulse 1s infinite" }} />

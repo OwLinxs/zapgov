@@ -23,6 +23,7 @@ interface NavDef {
 const NAV: NavDef[] = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/inbox", label: "Caixa de Entrada", icon: "inbox" },
+  { href: "/fila", label: "Fila ao Vivo", icon: "clock" },
   { href: "/chatbot", label: "Chatbot", icon: "message", roles: ["admin"] },
   { href: "/disparo", label: "Novo Disparo", icon: "send", roles: ["admin", "supervisor"] },
   { href: "/historico", label: "Histórico", icon: "history" },

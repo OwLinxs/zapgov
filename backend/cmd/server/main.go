@@ -204,8 +204,16 @@ func main() {
 
 	queueClient := queue.NewClient(cfg.RedisAddr)
 	defer queueClient.Close()
-	campaignSvc := campaigns.NewService(campaigns.NewRepository(pool), queueClient, templatesClient)
+	campRepo := campaigns.NewRepository(pool)
+	campaignSvc := campaigns.NewService(campRepo, queueClient, templatesClient)
 	campaignSvc.SemWhatsApp = contactsRepo.SemWhatsApp // pula números sem WhatsApp
+	// Contadores do disparo: o webhook de status (delivered/read/failed) de
+	// mensagens de campanha atualiza entregues/lidas/falhas da campanha.
+	svc.OnCampaignStatus = func(ctx context.Context, campID int64, oldSt, newSt string) {
+		if err := campRepo.ApplyStatus(ctx, campID, oldSt, newSt); err != nil {
+			slog.Error("campanha: atualizar contadores", "campanha", campID, "err", err)
+		}
+	}
 	// Lembrete de véspera (personalizado): delega pro mesmo motor do envio
 	// individual. Closure pois msgHandler.OnDateInTemplate é definido mais abaixo.
 	campaignSvc.OnDateInTemplate = func(ctx context.Context, phone, nome string, data time.Time) {

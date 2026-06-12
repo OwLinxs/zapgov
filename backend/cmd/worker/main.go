@@ -81,9 +81,13 @@ func handleCampaignSend(svc *messaging.Service, repo *campaigns.Repository, limi
 			return err
 		}
 
-		_, err := svc.SendTemplate(ctx, p.To, p.Template, p.Language, p.Params, p.Preview)
+		msg, err := svc.SendTemplate(ctx, p.To, p.Template, p.Language, p.Params, p.Preview)
 		if err == nil {
+			// Liga a mensagem à campanha: o webhook de status atualiza os
+			// contadores de entregues/lidas do disparo.
+			_ = repo.TagMessage(ctx, msg.ID, p.CampaignID)
 			_ = repo.IncEnviadas(ctx, p.CampaignID)
+			_ = repo.MarkDoneIfComplete(ctx, p.CampaignID)
 			return nil
 		}
 
@@ -96,6 +100,7 @@ func handleCampaignSend(svc *messaging.Service, repo *campaigns.Repository, limi
 		// Recusa da Meta (4xx) é permanente: conta falha e não tenta de novo.
 		if isPermanent(err) {
 			_ = repo.IncFalhas(ctx, p.CampaignID)
+			_ = repo.MarkDoneIfComplete(ctx, p.CampaignID)
 			log.Printf("campanha %d: falha permanente para %s: %v", p.CampaignID, p.To, err)
 			return asynq.SkipRetry
 		}
@@ -104,6 +109,7 @@ func handleCampaignSend(svc *messaging.Service, repo *campaigns.Repository, limi
 		// Se esgotar as tentativas, contabiliza falha.
 		if retried, max := retryInfo(ctx); retried >= max {
 			_ = repo.IncFalhas(ctx, p.CampaignID)
+			_ = repo.MarkDoneIfComplete(ctx, p.CampaignID)
 		}
 		return err
 	}

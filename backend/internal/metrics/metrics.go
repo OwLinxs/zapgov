@@ -241,6 +241,40 @@ func (r *Repository) Atividade(ctx context.Context, limit int) ([]Atividade, err
 	return out, nil
 }
 
+// HeatCell é uma célula do mapa de calor de horário de pico: total de mensagens
+// RECEBIDAS por dia da semana (0=Dom..6=Sáb) e hora local, últimos 30 dias.
+type HeatCell struct {
+	Dia   int `json:"dia"`
+	Hora  int `json:"hora"`
+	Total int `json:"total"`
+}
+
+func (r *Repository) Heatmap(ctx context.Context) ([]HeatCell, error) {
+	// Fuso fixo do município (created_at é timestamptz/UTC no banco).
+	rows, err := r.pool.Query(ctx, `
+		SELECT EXTRACT(dow  FROM created_at AT TIME ZONE 'America/Sao_Paulo')::int,
+		       EXTRACT(hour FROM created_at AT TIME ZONE 'America/Sao_Paulo')::int,
+		       count(*)::int
+		FROM messages
+		WHERE tenant_id = $1 AND direction = 'in'
+		  AND created_at >= now() - interval '30 days'
+		GROUP BY 1, 2`,
+		tenantctx.From(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (HeatCell, error) {
+		var h HeatCell
+		err := row.Scan(&h.Dia, &h.Hora, &h.Total)
+		return h, err
+	})
+	if out == nil {
+		out = []HeatCell{}
+	}
+	return out, err
+}
+
 // AtendenteStat é o desempenho de um atendente (últimos 30 dias).
 type AtendenteStat struct {
 	Nome          string  `json:"nome"`

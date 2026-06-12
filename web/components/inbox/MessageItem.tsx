@@ -6,12 +6,14 @@ import { fetchMediaBlob, mapStatus, hhmm, type ApiMessage } from "@/lib/api";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-// ReactionWrap envolve a bolha: badge da reação atual + picker no hover
-// (reagir só em mensagens do cidadão; onReact ausente = sem picker).
-function ReactionWrap({ m, onReact, children }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; children: React.ReactNode }) {
+// ReactionWrap envolve a bolha: badge da reação atual + ações no hover
+// (reagir só em mensagens do cidadão; responder em qualquer mensagem real).
+function ReactionWrap({ m, onReact, onReply, children }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void; children: React.ReactNode }) {
   const [hover, setHover] = useState(false);
   const [open, setOpen] = useState(false);
   const podeReagir = !!onReact && m.direction === "in" && !!m.wa_message_id;
+  // Só mensagens com wamid real podem ser citadas (notas internas não).
+  const podeResponder = !!onReply && m.direction !== "note" && m.wa_message_id.startsWith("wamid");
 
   return (
     <div
@@ -35,9 +37,19 @@ function ReactionWrap({ m, onReact, children }: { m: ApiMessage; onReact?: (waId
           </span>
         </div>
       )}
-      {podeReagir && hover && (
-        <div style={{ position: "absolute", top: 2, left: "calc(100% - 270px)", zIndex: 5 }}>
-          {!open ? (
+      {(podeReagir || podeResponder) && hover && (
+        <div className="row center" style={{ position: "absolute", top: 2, left: "calc(100% - 270px)", zIndex: 5, gap: 4 }}>
+          {podeResponder && !open && (
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              style={{ background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)", borderRadius: 99 }}
+              title="Responder (citar)"
+              onClick={() => onReply!(m)}
+            >
+              <Icon name="reply" size={15} />
+            </button>
+          )}
+          {podeReagir && !open && (
             <button
               className="btn btn-ghost btn-icon btn-sm"
               style={{ background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)", borderRadius: 99 }}
@@ -46,7 +58,8 @@ function ReactionWrap({ m, onReact, children }: { m: ApiMessage; onReact?: (waId
             >
               <Icon name="smile" size={15} />
             </button>
-          ) : (
+          )}
+          {podeReagir && open && (
             <div
               className="row center"
               style={{
@@ -71,8 +84,23 @@ function ReactionWrap({ m, onReact, children }: { m: ApiMessage; onReact?: (waId
   );
 }
 
+// Quote: bloco da mensagem citada dentro da bolha (responder).
+function Quote({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        borderLeft: "3px solid var(--wa)", background: "rgba(127,127,127,.12)", borderRadius: 6,
+        padding: "4px 8px", fontSize: 11.5, marginBottom: 5, opacity: 0.85, lineHeight: 1.4,
+        maxHeight: 52, overflow: "hidden", whiteSpace: "pre-wrap",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
 // Renderiza uma mensagem: nota interna, texto (WaBubble) ou mídia.
-export function MessageItem({ m, onReact }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void }) {
+export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void }) {
   if (m.direction === "note") {
     return (
       <div className="wa-row" style={{ justifyContent: "center" }}>
@@ -93,19 +121,33 @@ export function MessageItem({ m, onReact }: { m: ApiMessage; onReact?: (waId: st
   }
   if (!m.media_type) {
     return (
-      <ReactionWrap m={m} onReact={onReact}>
-        <WaBubble
-          text={m.body}
-          dir={m.direction === "out" ? "out" : "in"}
-          time={hhmm(m.created_at)}
-          status={m.direction === "out" ? mapStatus(m.status) : undefined}
-        />
+      <ReactionWrap m={m} onReact={onReact} onReply={onReply}>
+        {m.reply_preview ? (
+          // Bolha custom com a citação (WaBubble não suporta children).
+          <div className={"wa-row " + (m.direction === "out" ? "out" : "in")}>
+            <div className={"wa-bubble " + (m.direction === "out" ? "out" : "in")}>
+              <Quote text={m.reply_preview} />
+              <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+              <div className="wa-meta">
+                {hhmm(m.created_at)}
+                {m.direction === "out" && <Icon name="checkDouble" size={14} style={{ color: m.status === "read" ? "var(--st-read)" : "inherit" }} />}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <WaBubble
+            text={m.body}
+            dir={m.direction === "out" ? "out" : "in"}
+            time={hhmm(m.created_at)}
+            status={m.direction === "out" ? mapStatus(m.status) : undefined}
+          />
+        )}
         <FailNote m={m} />
       </ReactionWrap>
     );
   }
   return (
-    <ReactionWrap m={m} onReact={onReact}>
+    <ReactionWrap m={m} onReact={onReact} onReply={onReply}>
       <MediaBubble m={m} />
       <FailNote m={m} />
     </ReactionWrap>
@@ -198,6 +240,7 @@ function MediaBubble({ m }: { m: ApiMessage }) {
   return (
     <div className={"wa-row " + m.direction}>
       <div className={"wa-bubble " + m.direction} style={{ maxWidth: 260 }}>
+        {m.reply_preview && <Quote text={m.reply_preview} />}
         {/* Sem media_id (outbound por link) ou erro → chip */}
         {!m.media_id || erro ? (
           <div className="row center" style={{ gap: 8 }}>

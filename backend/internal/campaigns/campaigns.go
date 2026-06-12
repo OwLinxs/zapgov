@@ -82,6 +82,76 @@ func (r *Repository) IncFalhas(ctx context.Context, id int64) error {
 	return err
 }
 
+// TagMessage liga uma mensagem enviada à campanha (worker, após o envio) —
+// permite que o webhook de status atualize os contadores do disparo.
+func (r *Repository) TagMessage(ctx context.Context, msgID, campID int64) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE messages SET campaign_id = $2 WHERE id = $1 AND tenant_id = $3`,
+		msgID, campID, tenantctx.From(ctx))
+	return err
+}
+
+// MarkDoneIfComplete fecha a campanha quando todos os destinatários foram
+// processados (enviadas + falhas >= total).
+func (r *Repository) MarkDoneIfComplete(ctx context.Context, id int64) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE campaigns SET status = 'enviado'
+		WHERE id = $1 AND tenant_id = $2 AND status = 'enviando' AND enviadas + falhas >= total`,
+		id, tenantctx.From(ctx))
+	return err
+}
+
+// statusRank ordena a progressão de status da Meta (p/ não contar regressões
+// de reentrega: read não volta a delivered).
+func statusRank(s string) int {
+	switch s {
+	case "delivered":
+		return 2
+	case "read":
+		return 3
+	default: // pending/sent
+		return 1
+	}
+}
+
+// statusDeltas traduz uma transição de status em incrementos dos contadores
+// (entregues, lidas, falhas). Função pura — testável sem banco.
+func statusDeltas(oldStatus, newStatus string) (dEnt, dLidas, dFalhas int) {
+	switch newStatus {
+	case "delivered":
+		if statusRank(oldStatus) < 2 {
+			dEnt = 1
+		}
+	case "read":
+		// read implica delivered (a Meta pode pular o evento de entrega).
+		if statusRank(oldStatus) < 2 {
+			dEnt = 1
+		}
+		if statusRank(oldStatus) < 3 {
+			dLidas = 1
+		}
+	case "failed":
+		if oldStatus != "failed" {
+			dFalhas = 1
+		}
+	}
+	return
+}
+
+// ApplyStatus aplica a transição de status de uma mensagem de campanha aos
+// contadores do disparo. Chamado pelo webhook.
+func (r *Repository) ApplyStatus(ctx context.Context, id int64, oldStatus, newStatus string) error {
+	dEnt, dLidas, dFalhas := statusDeltas(oldStatus, newStatus)
+	if dEnt == 0 && dLidas == 0 && dFalhas == 0 {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE campaigns SET entregues = entregues + $2, lidas = lidas + $3, falhas = falhas + $4
+		WHERE id = $1 AND tenant_id = $5`,
+		id, dEnt, dLidas, dFalhas, tenantctx.From(ctx))
+	return err
+}
+
 func (r *Repository) List(ctx context.Context, setor, status string) ([]Campaign, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT `+cols+` FROM campaigns

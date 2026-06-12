@@ -9,6 +9,9 @@ import (
 type OutgoingMessage struct {
 	To   string // telefone E.164 sem '+', ex: "5516998123344"
 	Body string
+	// ReplyTo, se preenchido, cita a mensagem alvo (wa_message_id) — o WhatsApp
+	// mostra a bolha citada acima do texto.
+	ReplyTo string
 }
 
 // TemplateMessage inicia uma conversa com um template aprovado pela Meta
@@ -32,6 +35,7 @@ type IncomingMessage struct {
 	Name        string
 	Body        string // texto ou legenda da mídia
 	ButtonID    string // id do botão/lista tocado (ex.: "nota_5"); vazio se texto livre
+	ReplyTo     string // wa_message_id citado quando o cidadão respondeu uma mensagem
 	Timestamp   time.Time
 
 	// Mídia (vazio quando é só texto).

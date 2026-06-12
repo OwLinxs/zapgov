@@ -189,6 +189,7 @@ export default function HistoricoPage() {
                       <th>Setor</th>
                       <th className="num">Enviadas</th>
                       <th className="num">Entrega</th>
+                      <th className="num">Lidas</th>
                       <th className="num">Falhas</th>
                       <th>Status</th>
                       <th>Operador</th>
@@ -232,6 +233,9 @@ export default function HistoricoPage() {
                                 </div>
                               </div>
                             </td>
+                            <td className="num mono" style={{ color: d.lidas > 0 ? "var(--wa)" : "var(--text-faint)" }}>
+                              {d.lidas || "0"}
+                            </td>
                             <td className="num mono" style={{ color: d.falhas > 0 ? "var(--st-failed)" : "var(--text-faint)" }}>
                               {d.falhas || "0"}
                             </td>
@@ -247,13 +251,14 @@ export default function HistoricoPage() {
                           </tr>
                           {isOpen && (
                             <tr>
-                              <td colSpan={9} style={{ padding: 0, background: "var(--bg-sunken)" }}>
-                                <div style={{ padding: "18px 22px", display: "grid", gridTemplateColumns: "repeat(4, 1fr) auto", gap: 24, alignItems: "center" }}>
+                              <td colSpan={10} style={{ padding: 0, background: "var(--bg-sunken)" }}>
+                                <div style={{ padding: "18px 22px", display: "grid", gridTemplateColumns: "repeat(5, 1fr) auto", gap: 24, alignItems: "center" }}>
                                   {(
                                     [
                                       ["Total", d.total, "var(--text-primary)"],
                                       ["Enviadas", d.enviadas, "var(--st-delivered)"],
                                       ["Entregues", d.entregues, "var(--st-read)"],
+                                      ["Lidas", d.lidas, "var(--wa)"],
                                       ["Falhas", d.falhas, "var(--st-failed)"],
                                     ] as [string, number, string][]
                                   ).map((s, i) => (

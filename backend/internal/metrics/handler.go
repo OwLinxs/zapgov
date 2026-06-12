@@ -13,7 +13,16 @@ func (h *Handler) Register(r fiber.Router) {
 	r.Get("/metrics/volume", h.volume)
 	r.Get("/metrics/atendentes", h.atendentes)
 	r.Get("/metrics/satisfacao", h.satisfacao)
+	r.Get("/metrics/heatmap", h.heatmap)
 	r.Get("/activity", h.activity)
+}
+
+func (h *Handler) heatmap(c *fiber.Ctx) error {
+	cells, err := h.repo.Heatmap(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"cells": cells})
 }
 
 // RegisterReports monta os relatórios CSV (admin/supervisor).
