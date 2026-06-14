@@ -689,6 +689,62 @@ export const setTenantMeta = (id: number, m: TenantMeta) =>
 export const suspendTenant = (id: number) => post(`/admin/tenants/${id}/suspend`, {});
 export const activateTenant = (id: number) => post(`/admin/tenants/${id}/activate`, {});
 
+// ---- Chamados (helpdesk T.I.) ----
+export interface ApiTicket {
+  id: number;
+  numero: number;
+  titulo: string;
+  descricao: string;
+  categoria: string;
+  prioridade: "baixa" | "media" | "alta" | "critica";
+  status: "aberto" | "em_andamento" | "aguardando" | "resolvido" | "cancelado";
+  solicitante_nome: string;
+  solicitante_fone: string;
+  secretaria: string;
+  local: string;
+  tecnico: string;
+  conversation_id: number | null;
+  criado_em: string;
+  atribuido_em: string | null;
+  resolvido_em: string | null;
+  sla_venc: string | null;
+}
+export interface ApiTicketComment {
+  id: number;
+  ticket_id: number;
+  autor: string;
+  body: string;
+  interno: boolean;
+  criado_em: string;
+}
+export interface ApiTicketMetrics {
+  abertos: number;
+  em_andamento: number;
+  aguardando: number;
+  sla_estourado: number;
+  resolvidos_7d: number;
+}
+
+export async function listTickets(f?: { status?: string; prioridade?: string; categoria?: string; tecnico?: string }): Promise<ApiTicket[]> {
+  const qs = new URLSearchParams();
+  if (f?.status) qs.set("status", f.status);
+  if (f?.prioridade) qs.set("prioridade", f.prioridade);
+  if (f?.categoria) qs.set("categoria", f.categoria);
+  if (f?.tecnico) qs.set("tecnico", f.tecnico);
+  const suffix = qs.toString() ? "?" + qs.toString() : "";
+  return (await get<{ tickets: ApiTicket[] }>("/tickets" + suffix)).tickets ?? [];
+}
+export const getTicketMetrics = () => get<ApiTicketMetrics>("/tickets/metrics");
+export const getTicket = (id: number) => get<{ ticket: ApiTicket; comments: ApiTicketComment[] }>(`/tickets/${id}`);
+export const createTicket = (t: {
+  titulo: string; descricao?: string; categoria?: string; prioridade?: string;
+  solicitante_nome?: string; solicitante_fone?: string; secretaria?: string; local?: string;
+}) => post<ApiTicket>("/tickets", t);
+export const setTicketStatus = (id: number, status: string) => post<ApiTicket>(`/tickets/${id}/status`, { status }, "PUT");
+export const assignTicket = (id: number, tecnico?: string) => post<ApiTicket>(`/tickets/${id}/assign`, { tecnico: tecnico || "" }, "PUT");
+export const commentTicket = (id: number, body: string, interno = false) =>
+  post<ApiTicketComment>(`/tickets/${id}/comment`, { body, interno });
+
 // ---- Auditoria ----
 export interface ApiAudit {
   id: number;

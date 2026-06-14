@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -36,6 +37,7 @@ import (
 	"zapgov/backend/internal/templates"
 	"zapgov/backend/internal/tenantctx"
 	"zapgov/backend/internal/tenants"
+	"zapgov/backend/internal/tickets"
 	"zapgov/backend/internal/webhook"
 )
 
@@ -242,6 +244,25 @@ func main() {
 	quickreplies.NewHandler(quickreplies.NewRepository(pool)).Register(api, opsOnly)
 
 	chatbot.NewHandler(chatbot.NewService(chatbot.NewRepository(pool), svc)).Register(api, adminOnly)
+
+	// Módulo de chamados do T.I. (helpdesk). Reaproveita o envio de template do
+	// messaging.Service p/ notificar o solicitante por WhatsApp.
+	ticketsSvc := tickets.NewService(tickets.NewRepository(pool))
+	ticketsSvc.OnAssigned = func(ctx context.Context, t *tickets.Ticket) {
+		preview := fmt.Sprintf("Seu chamado #%d está sendo atendido por %s.", t.Numero, t.Tecnico)
+		if _, err := svc.SendTemplate(ctx, t.SolicitanteFone, "chamado_atribuido", "pt_BR",
+			[]string{fmt.Sprintf("%d", t.Numero), t.Tecnico}, preview); err != nil {
+			slog.Warn("chamado: falha ao notificar atribuição", "ticket", t.Numero, "err", err)
+		}
+	}
+	ticketsSvc.OnResolved = func(ctx context.Context, t *tickets.Ticket) {
+		preview := fmt.Sprintf("Chamado #%d resolvido. Obrigado!", t.Numero)
+		if _, err := svc.SendTemplate(ctx, t.SolicitanteFone, "chamado_resolvido", "pt_BR",
+			[]string{fmt.Sprintf("%d", t.Numero)}, preview); err != nil {
+			slog.Warn("chamado: falha ao notificar resolução", "ticket", t.Numero, "err", err)
+		}
+	}
+	tickets.NewHandler(ticketsSvc).Register(api)
 
 	// Motor de fluxo (grafo de blocos). É ele que processa o inbound agora.
 	flowRepo := flow.NewRepository(pool)
