@@ -1,0 +1,49 @@
+# Desenvolvimento LOCAL — sobe só a infraestrutura (Postgres + Redis) isolada
+# da produção. O backend (go run) e o front (npm run dev) rodam direto na sua
+# máquina, apontando para estas portas. Assim você itera sem rebuild de imagem.
+#
+# Subir:   docker compose -f docker-compose.dev.yml -p zapgov-dev up -d
+# Derrubar: docker compose -f docker-compose.dev.yml -p zapgov-dev down
+# Zerar o banco: ...down -v   (apaga o volume pgdata_dev)
+#
+# Portas propositalmente diferentes da prod (5433/6380) p/ poder rodar os dois
+# ao mesmo tempo sem conflito e nunca acertar o banco de produção por engano.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zapgov
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: zapgov_dev
+    ports:
+      - "5433:5432" # host 5433 → container 5432
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zapgov"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/migrations:/migrations
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgres://zapgov:dev@postgres:5432/zapgov_dev?sslmode=disable",
+        "up",
+      ]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379" # host 6380 → container 6379
+
+volumes:
+  pgdata_dev:

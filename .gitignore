@@ -1,14 +1,17 @@
-# Versiona backend/, web/, deploy/ e o compose de produção. Resto fica de fora.
+# Versiona backend/, web/, deploy/ e os composes. Resto fica de fora.
 /*
 !/backend/
 !/web/
 !/deploy/
 !/docker-compose.prod.yml
+!/docker-compose.dev.yml
+!/Makefile
 !/.gitignore
 !/LICENSE.md
 
 # Segredos — nunca versionar (mesmo dentro das pastas acima)
 backend/.env
+backend/.env.dev
 *.env.local
 
 # Build / deps / backups
