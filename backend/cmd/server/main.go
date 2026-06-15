@@ -144,6 +144,10 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 	authH.RegisterPublic(app) // POST /auth/login
+	// Painéis disponíveis no login — PÚBLICA, registrada ANTES do grupo com auth
+	// (senão o middleware global a protegeria e o seletor não carregaria).
+	tenantsHandler := tenants.NewHandler(tenantsRepo, authSvc.EnsureSeedAdmin)
+	tenantsHandler.RegisterPublic(app) // GET /tenants/options
 	// Resolver de provider por tenant (credenciais Meta próprias, fallback .env).
 	provResolver := tenantsRepo.ProviderResolver(provider)
 	svc.ProviderResolver = provResolver
@@ -166,8 +170,6 @@ func main() {
 	authH.RegisterProtected(api) // /auth/me, /users (admin)
 
 	// Super Admin (cross-tenant): só o admin da plataforma (tenant 1).
-	tenantsHandler := tenants.NewHandler(tenantsRepo, authSvc.EnsureSeedAdmin)
-	tenantsHandler.RegisterPublic(app) // GET /tenants/options (seletor de login)
 	tenantsHandler.Register(api, auth.RequirePlatformAdmin())
 
 	msgHandler := messaging.NewHandler(svc)
