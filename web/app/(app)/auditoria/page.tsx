@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "@/components/shell/Topbar";
-import { Avatar, Button, EmptyState, Icon, Skel } from "@/components/ui";
-import { listAudit, type ApiAudit } from "@/lib/api";
+import { Avatar, Button, Drawer, EmptyState, Icon, Input, Skel } from "@/components/ui";
+import { MessageItem } from "@/components/inbox/MessageItem";
+import {
+  listAudit, listSessions, listSessionMessages,
+  type ApiAudit, type ApiSession, type ApiMessage,
+} from "@/lib/api";
 
 const PAPEL_LABEL: Record<string, string> = {
   admin: "Administrador",
@@ -19,10 +23,13 @@ function acaoLabel(m: string, rota: string): string {
   if (m === "PUT" && /\/users\/\d+/.test(rota)) return "Alterou usuário";
   if (m === "PUT" && /\/resolve$/.test(rota)) return "Finalizou atendimento";
   if (m === "PUT" && /\/claim$/.test(rota)) return "Pegou conversa";
+  if (m === "PUT" && /\/transfer$/.test(rota)) return "Transferiu conversa";
   if (m === "PUT" && /\/optout$/.test(rota)) return "Descadastrou contato (opt-out)";
   if (m === "PUT" && /\/optin$/.test(rota)) return "Recadastrou contato";
   if (m === "POST" && rota === "/messages/send") return "Enviou mensagem";
   if (m === "POST" && rota === "/messages/template") return "Enviou template";
+  if (m === "POST" && /\/comment$/.test(rota)) return "Comentou no chamado";
+  if (m === "POST" && rota === "/tickets") return "Abriu chamado";
   if (m === "POST" && rota === "/departments") return "Criou departamento";
   if (m === "DELETE" && /\/departments\//.test(rota)) return "Removeu departamento";
   if (m === "PUT" && /\/flows\//.test(rota)) return "Editou fluxo do bot";
@@ -34,25 +41,41 @@ function acaoLabel(m: string, rota: string): string {
   return `${m} ${rota}`;
 }
 
+// Extrai o id da conversa de uma rota /conversations/:id/... (para "ver conversa").
+function convIdDaRota(rota: string): number | null {
+  const m = rota.match(/\/conversations\/(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+function hojeMenos(dias: number) {
+  return new Date(Date.now() - dias * 864e5).toISOString().slice(0, 10);
+}
+
 export default function AuditoriaPage() {
   const [list, setList] = useState<ApiAudit[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [from, setFrom] = useState(hojeMenos(30));
+  const [to, setTo] = useState(hojeMenos(0));
+  const [q, setQ] = useState("");
+  const [verConv, setVerConv] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setList(await listAudit());
+      setList(await listAudit({ from, to, q: q.trim() || undefined }));
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [from, to, q]);
 
+  // Recarrega ao mudar período; busca textual com debounce.
   useEffect(() => {
-    load();
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
   }, [load]);
 
   return (
@@ -67,7 +90,24 @@ export default function AuditoriaPage() {
         }
       />
       <div className="content">
-        <div className="content-pad">
+        <div className="content-pad col" style={{ gap: 16 }}>
+          {/* Filtros */}
+          <div className="card card-pad">
+            <div className="row" style={{ gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div className="col" style={{ gap: 4 }}>
+                <span className="field-label">De</span>
+                <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+              </div>
+              <div className="col" style={{ gap: 4 }}>
+                <span className="field-label">Até</span>
+                <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+              </div>
+              <div className="grow" style={{ minWidth: 220 }}>
+                <Input icon="search" placeholder="Buscar por usuário, ação (rota) ou IP…" value={q} onChange={(e) => setQ(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
           <div className="card" style={{ overflow: "hidden" }}>
             {erro ? (
               <EmptyState icon="alertCircle" title="API indisponível" sub={erro} action={<Button size="sm" onClick={load}>Tentar de novo</Button>} />
@@ -78,7 +118,7 @@ export default function AuditoriaPage() {
                 ))}
               </div>
             ) : list.length === 0 ? (
-              <EmptyState icon="list" title="Sem registros" sub="As ações aparecem aqui conforme acontecem." />
+              <EmptyState icon="list" title="Sem registros" sub="Nenhuma ação no período/filtro escolhido." />
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table className="ds-table">
@@ -88,32 +128,45 @@ export default function AuditoriaPage() {
                       <th>Usuário</th>
                       <th>Papel</th>
                       <th>Ação</th>
+                      <th>IP</th>
                       <th className="num">Status</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {list.map((a) => (
-                      <tr key={a.id}>
-                        <td className="mono" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
-                          {new Date(a.criado_em).toLocaleString("pt-BR")}
-                        </td>
-                        <td className="strong">
-                          <div className="row center" style={{ gap: 9 }}>
-                            <Avatar name={a.user_nome || "?"} size={26} />
-                            {a.user_nome || "—"}
-                          </div>
-                        </td>
-                        <td>
-                          <span className="muted" style={{ fontSize: 12.5 }}>
-                            {PAPEL_LABEL[a.papel] || a.papel || "—"}
-                          </span>
-                        </td>
-                        <td>{acaoLabel(a.metodo, a.rota)}</td>
-                        <td className="num">
-                          <span className={"badge " + (a.status < 300 ? "badge-read" : "badge-failed")}>{a.status}</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {list.map((a) => {
+                      const convId = convIdDaRota(a.rota);
+                      return (
+                        <tr key={a.id}>
+                          <td className="mono" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                            {new Date(a.criado_em).toLocaleString("pt-BR")}
+                          </td>
+                          <td className="strong">
+                            <div className="row center" style={{ gap: 9 }}>
+                              <Avatar name={a.user_nome || "?"} size={26} />
+                              {a.user_nome || "—"}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="muted" style={{ fontSize: 12.5 }}>
+                              {PAPEL_LABEL[a.papel] || a.papel || "—"}
+                            </span>
+                          </td>
+                          <td>{acaoLabel(a.metodo, a.rota)}</td>
+                          <td className="mono faint" style={{ fontSize: 11.5 }}>{a.ip || "—"}</td>
+                          <td className="num">
+                            <span className={"badge " + (a.status < 300 ? "badge-read" : "badge-failed")}>{a.status}</span>
+                          </td>
+                          <td>
+                            {convId && (
+                              <Button variant="ghost" size="sm" icon="history" onClick={() => setVerConv(convId)}>
+                                Ver conversa
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -121,6 +174,71 @@ export default function AuditoriaPage() {
           </div>
         </div>
       </div>
+
+      {verConv != null && <ConversaDrawer convId={verConv} onClose={() => setVerConv(null)} />}
     </>
+  );
+}
+
+// ConversaDrawer mostra o histórico de uma conversa por sessão (janela de
+// atendimento) — gestor abre direto da trilha de auditoria.
+function ConversaDrawer({ convId, onClose }: { convId: number; onClose: () => void }) {
+  const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [sel, setSel] = useState<number | null>(null);
+  const [msgs, setMsgs] = useState<ApiMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    listSessions(convId)
+      .then((ss) => {
+        setSessions(ss);
+        if (ss[0]) setSel(ss[0].id); // janela mais recente primeiro
+      })
+      .catch(() => setSessions([]))
+      .finally(() => setLoading(false));
+  }, [convId]);
+
+  useEffect(() => {
+    if (sel == null) return;
+    listSessionMessages(sel).then(setMsgs).catch(() => setMsgs([]));
+  }, [sel]);
+
+  function fmt(iso: string) {
+    return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  return (
+    <Drawer open onClose={onClose} width={500}>
+      <div className="row between center" style={{ marginBottom: 12 }}>
+        <span className="strong" style={{ fontSize: 15 }}>Histórico da conversa</span>
+        <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}><Icon name="x" size={16} /></button>
+      </div>
+
+      {loading ? (
+        <div className="muted" style={{ padding: 20 }}>Carregando…</div>
+      ) : sessions.length === 0 ? (
+        <EmptyState icon="message" title="Sem histórico" sub="Esta conversa não tem sessões registradas." />
+      ) : (
+        <div className="col" style={{ gap: 12 }}>
+          {/* Seletor de janela de atendimento */}
+          <select className="select" value={sel ?? ""} onChange={(e) => setSel(Number(e.target.value))}>
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {fmt(s.iniciada_em)}{s.encerrada_em ? " → " + fmt(s.encerrada_em) : " (aberta)"}
+                {s.atendente ? " · " + s.atendente : ""}{s.setor ? " · " + s.setor : ""}
+              </option>
+            ))}
+          </select>
+
+          <div className="wa-canvas scroll-y" style={{ maxHeight: "calc(100vh - 180px)", borderRadius: 8, padding: 10 }}>
+            {msgs.length === 0 ? (
+              <div className="muted" style={{ textAlign: "center", padding: 18, fontSize: 12.5 }}>Sem mensagens nesta janela.</div>
+            ) : (
+              msgs.map((m) => <MessageItem key={m.id} m={m} />)
+            )}
+          </div>
+        </div>
+      )}
+    </Drawer>
   );
 }

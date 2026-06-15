@@ -754,9 +754,18 @@ export interface ApiAudit {
   metodo: string;
   rota: string;
   status: number;
+  ip: string;
   criado_em: string;
 }
-export const listAudit = async () => (await get<{ audit: ApiAudit[] }>("/audit")).audit ?? [];
+export const listAudit = async (f?: { user_id?: number; from?: string; to?: string; q?: string }) => {
+  const qs = new URLSearchParams();
+  if (f?.user_id) qs.set("user_id", String(f.user_id));
+  if (f?.from) qs.set("from", f.from);
+  if (f?.to) qs.set("to", f.to);
+  if (f?.q) qs.set("q", f.q);
+  const suffix = qs.toString() ? "?" + qs.toString() : "";
+  return (await get<{ audit: ApiAudit[] }>("/audit" + suffix)).audit ?? [];
+};
 
 // ---- helpers de escrita ----
 async function post<T>(path: string, body: unknown, method: "POST" | "PUT" = "POST"): Promise<T> {

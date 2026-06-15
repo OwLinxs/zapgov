@@ -119,10 +119,11 @@ function NovaConversaModal({
       .catch(() => setAprovados([]));
   }, [open]);
 
-  // Ao trocar template/destinatário, reseta variáveis e auto-preenche a {{1}} com o 1º nome.
+  // Ao trocar template/destinatário, reseta variáveis e auto-preenche a {{1}} com
+  // o nome COMPLETO do contato (atendente pode editar se quiser só o 1º nome).
   useEffect(() => {
     const nome = contato?.nome || nomeNovo;
-    setVars(nome ? { "1": nome.split(" ")[0] } : {});
+    setVars(nome ? { "1": nome.trim() } : {});
   }, [tpl, contato, nomeNovo]);
 
   const rows = contatos
@@ -289,7 +290,7 @@ function NovaConversaModal({
                   <span className="wa-var" style={{ flex: "none", minWidth: 34, textAlign: "center" }}>{"{{" + n + "}}"}</span>
                   <Input value={vars[n] || ""} onChange={(e) => setVars((v) => ({ ...v, [n]: e.target.value }))} placeholder={n === "1" ? "Nome do contato" : "Valor"} />
                   {n === "1" && contato && (
-                    <Button variant="secondary" size="sm" onClick={() => setVars((v) => ({ ...v, "1": contato.nome.split(" ")[0] }))}>
+                    <Button variant="secondary" size="sm" onClick={() => setVars((v) => ({ ...v, "1": contato.nome.trim() }))}>
                       Auto
                     </Button>
                   )}

@@ -22,6 +22,7 @@ type Entry struct {
 	Metodo   string    `json:"metodo"`
 	Rota     string    `json:"rota"`
 	Status   int       `json:"status"`
+	IP       string    `json:"ip"`
 	CriadoEm time.Time `json:"criado_em"`
 }
 
@@ -31,27 +32,42 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 
 func (r *Repository) Write(ctx context.Context, e Entry) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO audit_log (tenant_id, user_id, user_nome, papel, metodo, rota, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		e.TenantID, e.UserID, e.UserNome, e.Papel, e.Metodo, e.Rota, e.Status)
+		INSERT INTO audit_log (tenant_id, user_id, user_nome, papel, metodo, rota, status, ip)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		e.TenantID, e.UserID, e.UserNome, e.Papel, e.Metodo, e.Rota, e.Status, e.IP)
 	return err
 }
 
-func (r *Repository) List(ctx context.Context, limit int) ([]Entry, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 200
+// Filter filtra a trilha (todos opcionais).
+type Filter struct {
+	UserID int64  // 0 = todos
+	From   string // YYYY-MM-DD (inclusive)
+	To     string // YYYY-MM-DD (inclusive)
+	Q      string // busca em rota/usuário/IP
+	Limit  int
+}
+
+func (r *Repository) List(ctx context.Context, f Filter) ([]Entry, error) {
+	if f.Limit <= 0 || f.Limit > 500 {
+		f.Limit = 200
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, user_id, user_nome, papel, metodo, rota, status, criado_em
-		FROM audit_log WHERE tenant_id = $1 ORDER BY criado_em DESC LIMIT $2`,
-		tenantctx.From(ctx), limit)
+		SELECT id, user_id, user_nome, papel, metodo, rota, status, ip, criado_em
+		FROM audit_log
+		WHERE tenant_id = $1
+		  AND ($2 = 0 OR user_id = $2)
+		  AND ($3 = '' OR criado_em >= $3::date)
+		  AND ($4 = '' OR criado_em < ($4::date + 1))
+		  AND ($5 = '' OR rota ILIKE '%'||$5||'%' OR user_nome ILIKE '%'||$5||'%' OR ip ILIKE '%'||$5||'%')
+		ORDER BY criado_em DESC LIMIT $6`,
+		tenantctx.From(ctx), f.UserID, f.From, f.To, f.Q, f.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Entry, error) {
 		var e Entry
-		err := row.Scan(&e.ID, &e.UserID, &e.UserNome, &e.Papel, &e.Metodo, &e.Rota, &e.Status, &e.CriadoEm)
+		err := row.Scan(&e.ID, &e.UserID, &e.UserNome, &e.Papel, &e.Metodo, &e.Rota, &e.Status, &e.IP, &e.CriadoEm)
 		return e, err
 	})
 }
@@ -79,7 +95,7 @@ func Middleware(repo *Repository) fiber.Handler {
 			uidPtr = &uid
 		}
 		// Escrita best-effort em background (não atrasa a resposta).
-		entry := Entry{TenantID: tid, UserID: uidPtr, UserNome: nome, Papel: papel, Metodo: m, Rota: c.Path(), Status: status}
+		entry := Entry{TenantID: tid, UserID: uidPtr, UserNome: nome, Papel: papel, Metodo: m, Rota: c.Path(), Status: status, IP: c.IP()}
 		go func() {
 			_ = repo.Write(context.Background(), entry)
 		}()
@@ -98,7 +114,13 @@ func (h *Handler) Register(r fiber.Router, gestor fiber.Handler) {
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {
-	items, err := h.repo.List(c.Context(), c.QueryInt("limit", 200))
+	items, err := h.repo.List(c.Context(), Filter{
+		UserID: int64(c.QueryInt("user_id", 0)),
+		From:   c.Query("from"),
+		To:     c.Query("to"),
+		Q:      c.Query("q"),
+		Limit:  c.QueryInt("limit", 200),
+	})
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
