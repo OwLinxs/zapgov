@@ -572,6 +572,11 @@ func (s *Service) ContatoDaConversa(ctx context.Context, convID int64) (string, 
 	return s.repo.ConversationContact(ctx, convID)
 }
 
+// ConversationIDByPhone devolve o id da conversa de um telefone (0 se não há).
+func (s *Service) ConversationIDByPhone(ctx context.Context, phone string) (int64, error) {
+	return s.repo.IDByPhone(ctx, phone)
+}
+
 // ConversationMessages devolve as mensagens de uma conversa e a marca como lida.
 func (s *Service) ConversationMessages(ctx context.Context, convID int64, limit int) ([]Message, error) {
 	if limit <= 0 || limit > 500 {

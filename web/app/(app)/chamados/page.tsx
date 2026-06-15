@@ -5,6 +5,7 @@ import { Topbar } from "@/components/shell/Topbar";
 import {
   Avatar, Button, Drawer, Field, Icon, Input, Modal, useToast,
 } from "@/components/ui";
+import { ConversaHistorico } from "@/components/inbox/ConversaHistorico";
 import {
   listTickets, getTicketMetrics, getTicket, createTicket, setTicketStatus,
   assignTicket, commentTicket,
@@ -263,6 +264,7 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
   const [coment, setComent] = useState("");
   const [interno, setInterno] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [verConv, setVerConv] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -340,6 +342,13 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
           <Linha k="Aberto em" v={fmtData(ticket.criado_em)} />
         </div>
 
+        {/* Conversa de origem (chamado aberto pelo WhatsApp) */}
+        {ticket.conversation_id && (
+          <Button variant="secondary" size="sm" icon="message" onClick={() => setVerConv(true)}>
+            Ver conversa de origem (WhatsApp)
+          </Button>
+        )}
+
         {/* Ações */}
         <div className="row center wrap" style={{ gap: 8 }}>
           {!ticket.tecnico && <Button size="sm" variant="primary" icon="reply" aria-disabled={busy} onClick={assumir}>Assumir</Button>}
@@ -383,6 +392,9 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
           </div>
         </div>
       </div>
+      {verConv && ticket.conversation_id && (
+        <ConversaHistorico convId={ticket.conversation_id} onClose={() => setVerConv(false)} />
+      )}
     </Drawer>
   );
 }

@@ -615,6 +615,18 @@ func (r *Repository) PhoneByID(ctx context.Context, id int64) (string, error) {
 	return phone, err
 }
 
+// IDByPhone devolve o id da conversa de um telefone (0 se não existe). Read-only
+// — usado para ligar um chamado à conversa de origem.
+func (r *Repository) IDByPhone(ctx context.Context, phone string) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, `SELECT id FROM conversations WHERE contact_phone = $1 AND tenant_id = $2`,
+		CanonPhone(phone), tenantctx.From(ctx)).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
+}
+
 // SetorAtendente devolve o setor e o atendente atuais da conversa (snapshot
 // para a pesquisa de satisfação).
 func (r *Repository) SetorAtendente(ctx context.Context, id int64) (string, string, error) {

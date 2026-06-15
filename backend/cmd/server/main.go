@@ -274,6 +274,11 @@ func main() {
 	// Roda no ctx do tenant (T.I.) → grava no tenant certo automaticamente.
 	flowSvc.OnOpenTicket = func(ctx context.Context, from, nome string, vars map[string]string) (int, error) {
 		titulo := firstNonEmpty(vars["titulo"], vars["assunto"], vars["descricao"], "Chamado via WhatsApp")
+		// Liga o chamado à conversa de origem (técnico abre o WhatsApp que o gerou).
+		var convID *int64
+		if id, _ := svc.ConversationIDByPhone(ctx, from); id > 0 {
+			convID = &id
+		}
 		t, err := ticketsSvc.Create(ctx, tickets.CreateInput{
 			Titulo:          titulo,
 			Descricao:       vars["descricao"],
@@ -283,6 +288,7 @@ func main() {
 			Local:           vars["local"],
 			SolicitanteNome: nome,
 			SolicitanteFone: from, // já canônico no HandleInbound
+			ConversationID:  convID,
 		})
 		if err != nil {
 			return 0, err
