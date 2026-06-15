@@ -128,11 +128,23 @@ export async function changePassword(senha_atual: string, nova_senha: string): P
   await post("/auth/password", { senha_atual, nova_senha });
 }
 
+// currentSub deriva o subdomínio do host atual (ti.zap.francisco… -> "ti") para
+// o login resolver o tenant. www/localhost contam como sem subdomínio (tenant 1).
+function currentSub(): string {
+  if (typeof window === "undefined") return "";
+  const h = window.location.hostname;
+  const i = h.indexOf(".");
+  if (i <= 0) return "";
+  const label = h.slice(0, i);
+  return label === "www" || label === "localhost" ? "" : label;
+}
+
 export async function login(email: string, senha: string): Promise<{ token: string; user: AuthUser }> {
+  const sub = currentSub();
   const res = await fetch(BASE + "/auth/login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, senha }),
+    headers: { "Content-Type": "application/json", ...(sub ? { "X-Tenant": sub } : {}) },
+    body: JSON.stringify({ email, senha, subdominio: sub }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Falha no login" }));
