@@ -593,6 +593,7 @@ export default function InboxPage() {
   const [midiaOpen, setMidiaOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null); // campo de mensagem (auto-resize)
 
   // Histórico por sessão (drawer)
   const [histOpen, setHistOpen] = useState(false);
@@ -824,6 +825,14 @@ export default function InboxPage() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs]);
+
+  // Ajusta a altura do campo de mensagem ao conteúdo (cresce até um limite, depois rola).
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
+  }, [draft]);
 
   const atendentes = Array.from(new Set(convs.map((c) => c.atendente).filter(Boolean)));
 
@@ -1227,7 +1236,7 @@ export default function InboxPage() {
                     </Button>
                   </div>
                 ) : (
-                <div className="row center" style={{ gap: 9 }}>
+                <div className="row" style={{ gap: 9, alignItems: "flex-end" }}>
                   <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Enviar mídia" onClick={() => setMidiaOpen(true)}>
                     <Icon name="attach" size={18} />
                   </button>
@@ -1299,21 +1308,24 @@ export default function InboxPage() {
                         ))}
                       </div>
                     )}
-                    <input
+                    <textarea
+                      ref={taRef}
                       className="input"
-                      style={{ width: "100%", height: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, borderColor: notaMode ? "var(--st-pending)" : undefined }}
-                      placeholder={notaMode ? "Nota interna (não vai pro cidadão)…" : "Digite uma resposta… ( / = atalhos)"}
+                      rows={1}
+                      style={{ width: "100%", minHeight: 42, maxHeight: 140, resize: "none", overflowY: "auto", lineHeight: 1.4, padding: "10px 12px", background: notaMode ? "var(--st-pending-soft)" : undefined, borderColor: notaMode ? "var(--st-pending)" : undefined }}
+                      placeholder={notaMode ? "Nota interna (não vai pro cidadão)…" : "Digite uma resposta… (Enter envia · Shift+Enter quebra linha · / = atalhos)"}
                       value={draft}
                       onChange={(e) => { setDraft(e.target.value); setSlashOff(false); }}
                       onKeyDown={(e) => {
-                        if (slashMatches.length > 0 && (e.key === "Enter" || e.key === "Tab")) {
+                        if (slashMatches.length > 0 && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
                           e.preventDefault();
                           setDraft(slashMatches[0].texto);
                           setSlashOff(true);
                           return;
                         }
                         if (e.key === "Escape") { setSlashOff(true); return; }
-                        if (e.key === "Enter") enviar();
+                        // Enter envia; Shift+Enter quebra linha (padrão WhatsApp).
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
                       }}
                     />
                   </div>
