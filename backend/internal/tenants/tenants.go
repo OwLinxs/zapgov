@@ -55,6 +55,31 @@ func scan(row pgx.CollectableRow) (Tenant, error) {
 	return t, err
 }
 
+// Option é um painel disponível na tela de login (sem dados sensíveis).
+type Option struct {
+	Nome       string `json:"nome"`
+	Subdominio string `json:"subdominio"`
+}
+
+// PublicOptions lista os painéis ativos para o seletor de login (nome +
+// subdomínio apenas). Permite acessar tenants sem subdomínio próprio no DNS.
+func (r *Repository) PublicOptions(ctx context.Context) ([]Option, error) {
+	rows, err := r.pool.Query(ctx, `SELECT nome, subdominio FROM tenants WHERE ativo ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Option, error) {
+		var o Option
+		err := row.Scan(&o.Nome, &o.Subdominio)
+		return o, err
+	})
+	if out == nil {
+		out = []Option{}
+	}
+	return out, err
+}
+
 // IDBySubdomain resolve o tenant a partir do subdomínio. Vazio/desconhecido cai
 // no tenant padrão (1) para manter o comportamento single-tenant atual.
 func (r *Repository) IDBySubdomain(ctx context.Context, sub string) int64 {

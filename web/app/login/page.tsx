@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/shell/Logo";
 import { Button, Field, Input, Icon, Modal, useToast } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
-import { login, changePassword } from "@/lib/api";
+import { login, changePassword, listTenantOptions, type TenantOption } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +15,18 @@ export default function LoginPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [needChange, setNeedChange] = useState(false);
+  const [paineis, setPaineis] = useState<TenantOption[]>([]);
+  const [painel, setPainel] = useState(""); // subdomínio escolhido
+
+  // Painéis disponíveis (Prefeitura, T.I., …) — evita precisar de subdomínio no DNS.
+  useEffect(() => {
+    listTenantOptions()
+      .then((opts) => {
+        setPaineis(opts);
+        if (opts[0]) setPainel(opts[0].subdominio); // reflete a seleção do select
+      })
+      .catch(() => setPaineis([]));
+  }, []);
 
   const entrar = async () => {
     setErr("");
@@ -22,7 +34,7 @@ export default function LoginPage() {
     if (!senha) return setErr("Informe a senha.");
     setLoading(true);
     try {
-      const { token, user } = await login(email, senha);
+      const { token, user } = await login(email, senha, painel || undefined);
       localStorage.setItem("zg-token", token);
       localStorage.setItem("zg-user", JSON.stringify(user));
       if (user.must_change_password) {
@@ -77,6 +89,15 @@ export default function LoginPage() {
           </p>
 
           <div className="col" style={{ gap: 16 }}>
+            {paineis.length > 1 && (
+              <Field label="Painel">
+                <select className="select" value={painel} onChange={(e) => setPainel(e.target.value)}>
+                  {paineis.map((p) => (
+                    <option key={p.subdominio} value={p.subdominio}>{p.nome}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <Field label="E-mail">
               <Input icon="user" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@orgao.gov.br" />
             </Field>

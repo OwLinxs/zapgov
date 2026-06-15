@@ -165,7 +165,9 @@ func main() {
 	authH.RegisterProtected(api) // /auth/me, /users (admin)
 
 	// Super Admin (cross-tenant): só o admin da plataforma (tenant 1).
-	tenants.NewHandler(tenantsRepo, authSvc.EnsureSeedAdmin).Register(api, auth.RequirePlatformAdmin())
+	tenantsHandler := tenants.NewHandler(tenantsRepo, authSvc.EnsureSeedAdmin)
+	tenantsHandler.RegisterPublic(app) // GET /tenants/options (seletor de login)
+	tenantsHandler.Register(api, auth.RequirePlatformAdmin())
 
 	msgHandler := messaging.NewHandler(svc)
 	msgHandler.Register(api)

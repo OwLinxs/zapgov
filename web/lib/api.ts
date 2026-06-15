@@ -139,8 +139,17 @@ function currentSub(): string {
   return label === "www" || label === "localhost" ? "" : label;
 }
 
-export async function login(email: string, senha: string): Promise<{ token: string; user: AuthUser }> {
-  const sub = currentSub();
+// Painéis disponíveis (seletor de login) — evita precisar de subdomínio no DNS.
+export interface TenantOption {
+  nome: string;
+  subdominio: string;
+}
+export const listTenantOptions = async () =>
+  (await get<{ options: TenantOption[] }>("/tenants/options")).options ?? [];
+
+// login: tenant resolvido pelo subdomínio escolhido (seletor) ou pelo host.
+export async function login(email: string, senha: string, subdominio?: string): Promise<{ token: string; user: AuthUser }> {
+  const sub = subdominio ?? currentSub();
   const res = await fetch(BASE + "/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(sub ? { "X-Tenant": sub } : {}) },

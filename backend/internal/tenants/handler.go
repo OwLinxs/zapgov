@@ -16,6 +16,20 @@ func NewHandler(repo *Repository, seedAdmin func(ctx context.Context, tenantID i
 	return &Handler{repo: repo, seedAdmin: seedAdmin}
 }
 
+// RegisterPublic monta a rota aberta usada pela tela de login para listar os
+// painéis disponíveis (sem autenticação, sem dados sensíveis).
+func (h *Handler) RegisterPublic(r fiber.Router) {
+	r.Get("/tenants/options", h.options)
+}
+
+func (h *Handler) options(c *fiber.Ctx) error {
+	opts, err := h.repo.PublicOptions(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"options": opts})
+}
+
 // Register monta as rotas de Super Admin (cross-tenant). O guard de plataforma
 // é aplicado pelo chamador (main).
 func (h *Handler) Register(r fiber.Router, platformAdmin fiber.Handler) {
