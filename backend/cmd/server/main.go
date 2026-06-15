@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -250,19 +251,33 @@ func main() {
 	// Módulo de chamados do T.I. (helpdesk). Reaproveita o envio de template do
 	// messaging.Service p/ notificar o solicitante por WhatsApp.
 	ticketsSvc := tickets.NewService(tickets.NewRepository(pool))
-	ticketsSvc.OnAssigned = func(ctx context.Context, t *tickets.Ticket) {
-		preview := fmt.Sprintf("Seu chamado #%d está sendo atendido por %s.", t.Numero, t.Tecnico)
-		if _, err := svc.SendTemplate(ctx, t.SolicitanteFone, "chamado_atribuido", "pt_BR",
-			[]string{fmt.Sprintf("%d", t.Numero), t.Tecnico}, preview); err != nil {
-			slog.Warn("chamado: falha ao notificar atribuição", "ticket", t.Numero, "err", err)
+	// notificarChamado avisa o solicitante: tenta texto livre (grátis, dentro da
+	// janela de 24h — o solicitante normalmente acabou de interagir); se a janela
+	// fechou, cai para o template aprovado. Sem janela aberta E sem template
+	// aprovado, registra aviso (não quebra o fluxo do chamado).
+	notificarChamado := func(ctx context.Context, fone, texto, template string, params []string) {
+		if fone == "" {
+			return
+		}
+		if _, err := svc.SendText(ctx, fone, texto); err == nil {
+			return
+		} else if errors.Is(err, messaging.ErrOptedOut) {
+			return // descadastrado (LGPD): não insiste
+		}
+		// Janela fechada (ou texto recusado): usa o template aprovado.
+		if _, err := svc.SendTemplate(ctx, fone, template, "pt_BR", params, texto); err != nil {
+			slog.Warn("chamado: falha ao notificar (texto e template)", "template", template, "err", err)
 		}
 	}
+	ticketsSvc.OnAssigned = func(ctx context.Context, t *tickets.Ticket) {
+		texto := fmt.Sprintf("Seu chamado #%d está sendo atendido por %s.", t.Numero, t.Tecnico)
+		notificarChamado(ctx, t.SolicitanteFone, texto, "chamado_atribuido",
+			[]string{fmt.Sprintf("%d", t.Numero), t.Tecnico})
+	}
 	ticketsSvc.OnResolved = func(ctx context.Context, t *tickets.Ticket) {
-		preview := fmt.Sprintf("Chamado #%d resolvido. Obrigado!", t.Numero)
-		if _, err := svc.SendTemplate(ctx, t.SolicitanteFone, "chamado_resolvido", "pt_BR",
-			[]string{fmt.Sprintf("%d", t.Numero)}, preview); err != nil {
-			slog.Warn("chamado: falha ao notificar resolução", "ticket", t.Numero, "err", err)
-		}
+		texto := fmt.Sprintf("Chamado #%d resolvido. Obrigado!", t.Numero)
+		notificarChamado(ctx, t.SolicitanteFone, texto, "chamado_resolvido",
+			[]string{fmt.Sprintf("%d", t.Numero)})
 	}
 	tickets.NewHandler(ticketsSvc).Register(api)
 
