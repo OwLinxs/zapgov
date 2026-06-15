@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 
@@ -20,6 +21,11 @@ type Replier interface {
 type Service struct {
 	repo    *Repository
 	replier Replier
+
+	// OnOpenTicket, se definido, abre um chamado de suporte a partir das
+	// variáveis coletadas no fluxo (bloco action kind "abrir_chamado").
+	// Desacopla o pacote flow do pacote tickets. Devolve o número do chamado.
+	OnOpenTicket func(ctx context.Context, from, nome string, vars map[string]string) (numero int, err error)
 }
 
 func NewService(repo *Repository, replier Replier) *Service {
@@ -48,13 +54,17 @@ func (s *Service) HandleInbound(ctx context.Context, from, name, body string) {
 		log.Printf("flow: estado de %s: %v", from, err)
 		return
 	}
-	s.run(ctx, from, g, st, body)
+	s.run(ctx, from, name, g, st, body)
 }
 
-func (s *Service) run(ctx context.Context, from string, g *Graph, st State, input string) {
+func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State, input string) {
 	vars := st.Vars
 	if vars == nil {
 		vars = map[string]string{}
+	}
+	// Nome do perfil do WhatsApp fica disponível p/ blocos (ex.: abrir_chamado).
+	if name != "" {
+		vars["_nome"] = name
 	}
 
 	cur := st.CurrentNode
@@ -119,6 +129,14 @@ func (s *Service) run(ctx context.Context, from string, g *Graph, st State, inpu
 			if d.Kind == "assign_department" && d.Department != "" {
 				_ = s.repo.AssignDepartment(ctx, from, d.Department)
 			}
+			if d.Kind == "abrir_chamado" {
+				if d.Prioridade != "" {
+					vars["prioridade"] = d.Prioridade
+				}
+				s.abrirChamado(ctx, from, vars)
+				_ = s.repo.ClearState(ctx, from)
+				return
+			}
 			cur = g.next(cur)
 
 		case "condition":
@@ -162,6 +180,21 @@ func (s *Service) run(ctx context.Context, from string, g *Graph, st State, inpu
 
 	// Beco sem saída ou estouro de passos: reseta para não travar a conversa.
 	_ = s.repo.ClearState(ctx, from)
+}
+
+// abrirChamado dispara a abertura do chamado (callback) e confirma ao usuário.
+func (s *Service) abrirChamado(ctx context.Context, from string, vars map[string]string) {
+	if s.OnOpenTicket == nil {
+		s.send(ctx, from, "Abertura de chamado indisponível no momento.")
+		return
+	}
+	numero, err := s.OnOpenTicket(ctx, from, vars["_nome"], vars)
+	if err != nil {
+		log.Printf("flow: abrir chamado de %s: %v", from, err)
+		s.send(ctx, from, "Não consegui abrir o chamado agora. Tente novamente mais tarde.")
+		return
+	}
+	s.send(ctx, from, fmt.Sprintf("✅ Chamado *#%d* aberto! Vamos te avisar por aqui sobre o andamento.", numero))
 }
 
 func (s *Service) send(ctx context.Context, to, body string) {

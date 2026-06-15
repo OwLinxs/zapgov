@@ -268,6 +268,25 @@ func main() {
 	flowRepo := flow.NewRepository(pool)
 	flowSvc := flow.NewService(flowRepo, svc)
 	svc.OnInbound = flowSvc.HandleInbound
+	// Bloco "abrir_chamado" do fluxo cria um chamado com as variáveis coletadas.
+	// Roda no ctx do tenant (T.I.) → grava no tenant certo automaticamente.
+	flowSvc.OnOpenTicket = func(ctx context.Context, from, nome string, vars map[string]string) (int, error) {
+		titulo := firstNonEmpty(vars["titulo"], vars["assunto"], vars["descricao"], "Chamado via WhatsApp")
+		t, err := ticketsSvc.Create(ctx, tickets.CreateInput{
+			Titulo:          titulo,
+			Descricao:       vars["descricao"],
+			Categoria:       vars["categoria"],
+			Prioridade:      vars["prioridade"], // default 'media' no service
+			Secretaria:      vars["secretaria"],
+			Local:           vars["local"],
+			SolicitanteNome: nome,
+			SolicitanteFone: from, // já canônico no HandleInbound
+		})
+		if err != nil {
+			return 0, err
+		}
+		return t.Numero, nil
+	}
 	flow.NewHandler(flowRepo).Register(api, adminOnly)
 
 	settingsRepo := settings.NewRepository(pool)
@@ -458,4 +477,14 @@ func corsOrigins() string {
 		return v
 	}
 	return "http://localhost:3000,http://localhost:3001"
+}
+
+// firstNonEmpty devolve o primeiro argumento não-vazio (após trim).
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }

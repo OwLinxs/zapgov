@@ -288,7 +288,17 @@ function EditPanel({
         </>
       )}
 
-      {(node.type === "action" || node.type === "handoff") && (
+      {node.type === "action" && (
+        <Field label="Tipo de ação">
+          <select className="select" value={d.kind || "assign_department"} onChange={(e) => onPatch({ kind: e.target.value })}>
+            <option value="assign_department">Atribuir setor</option>
+            <option value="abrir_chamado">Abrir chamado (T.I.)</option>
+          </select>
+        </Field>
+      )}
+
+      {/* Atribuir setor (action) ou handoff: escolhe o departamento. */}
+      {((node.type === "action" && (d.kind || "assign_department") === "assign_department") || node.type === "handoff") && (
         <Field label="Departamento">
           <select className="select" value={d.department || ""} onChange={(e) => onPatch({ department: e.target.value })}>
             <option value="">Nenhum</option>
@@ -299,6 +309,27 @@ function EditPanel({
             ))}
           </select>
         </Field>
+      )}
+
+      {/* Abrir chamado: prioridade opcional + dica das variáveis esperadas. */}
+      {node.type === "action" && d.kind === "abrir_chamado" && (
+        <>
+          <Field label="Prioridade">
+            <select className="select" value={d.prioridade || ""} onChange={(e) => onPatch({ prioridade: e.target.value })}>
+              <option value="">Padrão (média)</option>
+              <option value="baixa">Baixa</option>
+              <option value="media">Média</option>
+              <option value="alta">Alta</option>
+              <option value="critica">Crítica</option>
+            </select>
+          </Field>
+          <p className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+            Coloque blocos de <b>Pergunta</b> antes deste, salvando nas variáveis{" "}
+            <code>titulo</code>, <code>descricao</code>, <code>categoria</code>,{" "}
+            <code>secretaria</code> e <code>local</code>. O chamado é criado com elas
+            e o nome/telefone de quem escreveu.
+          </p>
+        </>
       )}
 
       {(node.type === "start" || node.type === "end") && (

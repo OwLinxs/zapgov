@@ -1,6 +1,23 @@
 package flow
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+// O bloco action "abrir_chamado" precisa parsear kind + prioridade do grafo.
+func TestActionDataAbrirChamado(t *testing.T) {
+	var d actionData
+	if err := json.Unmarshal([]byte(`{"kind":"abrir_chamado","prioridade":"alta"}`), &d); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if d.Kind != "abrir_chamado" {
+		t.Errorf("kind = %q, quer abrir_chamado", d.Kind)
+	}
+	if d.Prioridade != "alta" {
+		t.Errorf("prioridade = %q, quer alta", d.Prioridade)
+	}
+}
 
 func TestRender(t *testing.T) {
 	got := render("Olá {{nome}}, sua consulta é {{data}}", map[string]string{"nome": "João", "data": "05/06"})

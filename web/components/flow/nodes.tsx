@@ -71,7 +71,9 @@ function SingleOut({ type, data, selected }: NodeProps & { type: string }) {
             </div>
           </>
         )}
-        {type === "action" && <>Atribuir setor: <b>{(data as any).department || "—"}</b></>}
+        {type === "action" && ((data as any).kind === "abrir_chamado"
+          ? <>Abrir chamado <b>{(data as any).prioridade ? "(" + (data as any).prioridade + ")" : ""}</b></>
+          : <>Atribuir setor: <b>{(data as any).department || "—"}</b></>)}
         {type === "start" && <span className="muted">Entrada do fluxo</span>}
       </Shell>
       <Handle type="source" position={Position.Bottom} style={dotStyle} />

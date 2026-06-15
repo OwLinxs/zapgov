@@ -93,8 +93,9 @@ type conditionData struct {
 }
 
 type actionData struct {
-	Kind       string `json:"kind"` // assign_department
+	Kind       string `json:"kind"`       // assign_department | abrir_chamado
 	Department string `json:"department"`
+	Prioridade string `json:"prioridade"` // p/ abrir_chamado (baixa|media|alta|critica)
 }
 
 type handoffData struct {
