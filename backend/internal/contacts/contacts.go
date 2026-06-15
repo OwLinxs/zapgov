@@ -42,14 +42,27 @@ func scan(row pgx.CollectableRow) (Contact, error) {
 
 const cols = `id, nome, telefone, cpf, setor, tags, status, mensagens, ultimo_contato, criado_em`
 
-// List filtra por setor e busca (nome/telefone/cpf).
+// List filtra por setor e busca (nome/telefone/cpf). As colunas mensagens e
+// ultimo_contato são CALCULADAS das mensagens reais (a coluna estática da tabela
+// nunca era atualizada — ficava zerada). Casa por telefone (contatos
+// auto-cadastrados usam o mesmo formato canônico das conversas).
 func (r *Repository) List(ctx context.Context, setor, q string) ([]Contact, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT `+cols+` FROM contacts
-		WHERE tenant_id = $3
-		  AND ($1 = '' OR setor = $1)
-		  AND ($2 = '' OR nome ILIKE '%'||$2||'%' OR telefone ILIKE '%'||$2||'%' OR cpf ILIKE '%'||$2||'%')
-		ORDER BY nome ASC`,
+		SELECT c.id, c.nome, c.telefone, c.cpf, c.setor, c.tags, c.status,
+		       COALESCE(s.qtd, 0) AS mensagens,
+		       s.ultimo AS ultimo_contato,
+		       c.criado_em
+		FROM contacts c
+		LEFT JOIN LATERAL (
+			SELECT count(m.id) AS qtd, max(m.created_at) AS ultimo
+			FROM conversations cv
+			JOIN messages m ON m.conversation_id = cv.id
+			WHERE cv.tenant_id = c.tenant_id AND cv.contact_phone = c.telefone
+		) s ON true
+		WHERE c.tenant_id = $3
+		  AND ($1 = '' OR c.setor = $1)
+		  AND ($2 = '' OR c.nome ILIKE '%'||$2||'%' OR c.telefone ILIKE '%'||$2||'%' OR c.cpf ILIKE '%'||$2||'%')
+		ORDER BY c.nome ASC`,
 		setor, q, tenantctx.From(ctx),
 	)
 	if err != nil {
