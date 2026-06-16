@@ -34,6 +34,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 
 const cols = `id, titulo, problema, solucao, categoria, tags, autor, ticket_id, status, views, uteis, criado_em, atualizado_em`
 
+// buscaExpr é a expressão full-text — IDÊNTICA à do índice GIN (idx_kb_busca),
+// para a busca aproveitar o índice.
+const buscaExpr = `to_tsvector('portuguese', coalesce(titulo,'')||' '||coalesce(problema,'')||' '||coalesce(solucao,'')||' '||array_to_string(tags,' '))`
+
 func scan(row pgx.CollectableRow) (Article, error) {
 	var a Article
 	err := row.Scan(&a.ID, &a.Titulo, &a.Problema, &a.Solucao, &a.Categoria, &a.Tags,
@@ -51,8 +55,8 @@ func (r *Repository) List(ctx context.Context, q, categoria string) ([]Article, 
 			SELECT `+cols+` FROM kb_articles
 			WHERE tenant_id = $1 AND status = 'publicado'
 			  AND ($3 = '' OR categoria = $3)
-			  AND busca @@ plainto_tsquery('portuguese', $2)
-			ORDER BY ts_rank(busca, plainto_tsquery('portuguese', $2)) DESC
+			  AND `+buscaExpr+` @@ plainto_tsquery('portuguese', $2)
+			ORDER BY ts_rank(`+buscaExpr+`, plainto_tsquery('portuguese', $2)) DESC
 			LIMIT 100`,
 			tenantctx.From(ctx), q, categoria)
 	} else {

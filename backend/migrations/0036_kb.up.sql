@@ -14,13 +14,13 @@ CREATE TABLE IF NOT EXISTS kb_articles (
     views         INT NOT NULL DEFAULT 0,
     uteis         INT NOT NULL DEFAULT 0,
     criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- busca full-text em português (título + problema + solução + tags)
-    busca tsvector GENERATED ALWAYS AS (
-        to_tsvector('portuguese',
-            coalesce(titulo,'')||' '||coalesce(problema,'')||' '||
-            coalesce(solucao,'')||' '||array_to_string(tags,' '))
-    ) STORED
+    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_kb_busca ON kb_articles USING GIN (busca);
+-- Busca full-text em português via ÍNDICE DE EXPRESSÃO (a forma recomendada;
+-- coluna GENERATED com to_tsvector dá "não imutável" em algumas versões).
+-- A query usa exatamente a mesma expressão para aproveitar o índice.
+CREATE INDEX IF NOT EXISTS idx_kb_busca ON kb_articles USING GIN (
+    to_tsvector('portuguese',
+        coalesce(titulo,'')||' '||coalesce(problema,'')||' '||
+        coalesce(solucao,'')||' '||array_to_string(tags,' ')));
 CREATE INDEX IF NOT EXISTS idx_kb_tenant ON kb_articles(tenant_id, status, atualizado_em DESC);
