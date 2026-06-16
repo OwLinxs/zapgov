@@ -81,30 +81,40 @@ function SingleOut({ type, data, selected }: NodeProps & { type: string }) {
   );
 }
 
-// Menu: uma saída por opção (sourceHandle = chave).
+// Menu: uma saída por opção (sourceHandle = chave). No modo CAPTURA (data.var
+// preenchido) vira saída única — a escolha é salva na variável e segue reto.
 function MenuNode({ data, selected }: NodeProps) {
   const opts: { key: string; label: string }[] = (data as any).options || [];
+  const captura = !!(data as any).var;
   return (
     <>
       <Handle type="target" position={Position.Top} style={dotStyle} />
       <Shell type="menu" selected={selected}>
         <div style={{ marginBottom: 6 }}>{trunc((data as any).text, 50)}</div>
+        {captura && (
+          <div className="mono faint" style={{ fontSize: 10, marginBottom: 4 }}>
+            → salva em {"{{"}{(data as any).var}{"}}"}
+          </div>
+        )}
         <div className="col" style={{ gap: 4 }}>
           {opts.map((o) => (
             <div key={o.key} className="row center between" style={{ gap: 8, position: "relative", padding: "3px 0" }}>
               <span style={{ fontSize: 11.5 }}>
                 <span className="mono strong">{o.key}</span> · {o.label}
               </span>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={o.key}
-                style={{ ...dotStyle, position: "relative", right: -4, top: 0, transform: "none", background: "var(--brand)" }}
-              />
+              {!captura && (
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={o.key}
+                  style={{ ...dotStyle, position: "relative", right: -4, top: 0, transform: "none", background: "var(--brand)" }}
+                />
+              )}
             </div>
           ))}
         </div>
       </Shell>
+      {captura && <Handle type="source" position={Position.Bottom} style={dotStyle} />}
     </>
   );
 }

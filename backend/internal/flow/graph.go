@@ -70,7 +70,10 @@ func (g *Graph) next(id string) string { return g.target(id, "") }
 // ---- formatos de Data por tipo de nó ----
 
 type menuData struct {
-	Text    string `json:"text"`
+	Text string `json:"text"`
+	// Var, se preenchido, faz o menu CAPTURAR a escolha: grava o rótulo da opção
+	// tocada nesta variável e segue pela saída única (não ramifica por opção).
+	Var     string `json:"var"`
 	Options []struct {
 		Key   string `json:"key"`
 		Label string `json:"label"`

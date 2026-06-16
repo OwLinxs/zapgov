@@ -249,6 +249,9 @@ function EditPanel({
           <Field label="Texto do menu">
             <textarea className="textarea" value={d.text || ""} onChange={(e) => onPatch({ text: e.target.value })} />
           </Field>
+          <Field label="Salvar escolha na variável (opcional)" hint="Preenchido: vira pergunta de escolha única e grava a opção tocada (ex.: categoria). Vazio: ramifica por opção.">
+            <Input value={d.var || ""} onChange={(e) => onPatch({ var: e.target.value.trim() })} placeholder="ex.: categoria" />
+          </Field>
           <div className="field-label">Opções</div>
           {(d.options || []).map((o: any, i: number) => (
             <div key={i} className="row center" style={{ gap: 6 }}>

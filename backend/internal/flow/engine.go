@@ -86,15 +86,20 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 		switch node.Type {
 		case "menu":
 			in := strings.TrimSpace(input)
-			t := g.target(cur, in) // casa pela chave (tecla digitada / id do botão)
-			if t == "" {
-				t = g.target(cur, keyForLabel(node, in)) // ou pelo rótulo (toque no botão)
-			}
-			if t == "" {
+			var md menuData
+			_ = json.Unmarshal(node.Data, &md)
+			opt := matchMenuOption(md, in)
+			if opt == nil {
 				s.sendMenu(ctx, from, node) // opção inválida → reenvia menu
 				return
 			}
-			cur = t
+			if md.Var != "" {
+				// Menu de captura: grava o rótulo escolhido e segue pela saída única.
+				vars[md.Var] = opt.Label
+				cur = g.next(cur)
+			} else {
+				cur = g.target(cur, opt.Key) // ramifica pela opção escolhida
+			}
 		case "input":
 			var d inputData
 			_ = json.Unmarshal(node.Data, &d)
@@ -220,6 +225,21 @@ func (s *Service) sendMenu(ctx context.Context, to string, node *Node) {
 	if _, err := s.replier.SendMenu(ctx, to, d.Text, opts); err != nil {
 		log.Printf("flow: enviar menu para %s: %v", to, err)
 	}
+}
+
+// matchMenuOption acha a opção escolhida por chave digitada ou rótulo tocado.
+func matchMenuOption(md menuData, input string) *struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+} {
+	in := strings.TrimSpace(input)
+	for i := range md.Options {
+		o := &md.Options[i]
+		if strings.EqualFold(strings.TrimSpace(o.Key), in) || strings.EqualFold(strings.TrimSpace(o.Label), in) {
+			return o
+		}
+	}
+	return nil
 }
 
 // keyForLabel acha a chave da opção cujo rótulo casa com o texto (toque no botão).
