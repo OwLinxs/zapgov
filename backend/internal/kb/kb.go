@@ -35,8 +35,8 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 const cols = `id, titulo, problema, solucao, categoria, tags, autor, ticket_id, status, views, uteis, criado_em, atualizado_em`
 
 // buscaExpr é a expressão full-text — IDÊNTICA à do índice GIN (idx_kb_busca),
-// para a busca aproveitar o índice.
-const buscaExpr = `to_tsvector('portuguese', coalesce(titulo,'')||' '||coalesce(problema,'')||' '||coalesce(solucao,'')||' '||array_to_string(tags,' '))`
+// para a busca aproveitar o índice. Usa a função IMMUTABLE da migração.
+const buscaExpr = `kb_busca_tsv(titulo, problema, solucao, tags)`
 
 func scan(row pgx.CollectableRow) (Article, error) {
 	var a Article

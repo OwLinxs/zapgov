@@ -16,11 +16,17 @@ CREATE TABLE IF NOT EXISTS kb_articles (
     criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
     atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Busca full-text em português via ÍNDICE DE EXPRESSÃO (a forma recomendada;
--- coluna GENERATED com to_tsvector dá "não imutável" em algumas versões).
--- A query usa exatamente a mesma expressão para aproveitar o índice.
-CREATE INDEX IF NOT EXISTS idx_kb_busca ON kb_articles USING GIN (
-    to_tsvector('portuguese',
-        coalesce(titulo,'')||' '||coalesce(problema,'')||' '||
-        coalesce(solucao,'')||' '||array_to_string(tags,' ')));
+
+-- Função wrapper IMMUTABLE: to_tsvector('portuguese', ...) por nome de config é
+-- tratado como não-imutável pelo Postgres (não serve em índice/coluna gerada).
+-- Marcar a função como IMMUTABLE resolve (a config 'portuguese' é fixa na prática).
+CREATE OR REPLACE FUNCTION kb_busca_tsv(_titulo text, _problema text, _solucao text, _tags text[])
+RETURNS tsvector LANGUAGE sql IMMUTABLE AS $$
+    SELECT to_tsvector('portuguese',
+        coalesce(_titulo,'')||' '||coalesce(_problema,'')||' '||
+        coalesce(_solucao,'')||' '||array_to_string(_tags,' '));
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_kb_busca ON kb_articles
+    USING GIN (kb_busca_tsv(titulo, problema, solucao, tags));
 CREATE INDEX IF NOT EXISTS idx_kb_tenant ON kb_articles(tenant_id, status, atualizado_em DESC);
