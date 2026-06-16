@@ -82,6 +82,11 @@ type Service struct {
 	// OnButtonAction, se definido, trata o toque num botão de ação (ButtonID).
 	// true = consumido (não roda o bot). Ex.: técnico finaliza chamado por botão.
 	OnButtonAction func(ctx context.Context, from, buttonID string) bool
+
+	// IsBotExempt, se definido e true para o remetente, não dispara o chatbot/fila
+	// para as mensagens dele (ex.: técnico de campo só abre a janela de 24h para
+	// receber ordens). Ações por botão continuam funcionando.
+	IsBotExempt func(ctx context.Context, from string) bool
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -336,6 +341,12 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		// Ação por botão (ex.: técnico de campo confirma finalização de um chamado).
 		// O ButtonID identifica a ação/alvo; consome sem rodar o bot.
 		if s.OnButtonAction != nil && in.ButtonID != "" && s.OnButtonAction(ctx, in.From, in.ButtonID) {
+			continue
+		}
+
+		// Número isento (técnico de campo): a mensagem só abre a janela de 24h
+		// para ele receber ordens — não roda o bot nem entra na fila.
+		if s.IsBotExempt != nil && s.IsBotExempt(ctx, in.From) {
 			continue
 		}
 

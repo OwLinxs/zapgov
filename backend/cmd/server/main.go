@@ -254,7 +254,23 @@ func main() {
 
 	// Módulo de chamados do T.I. (helpdesk). Reaproveita o envio de template do
 	// messaging.Service p/ notificar o solicitante por WhatsApp.
-	ticketsSvc := tickets.NewService(tickets.NewRepository(pool))
+	ticketsRepo := tickets.NewRepository(pool)
+	ticketsSvc := tickets.NewService(ticketsRepo)
+	// Chatbot ignora os números dos técnicos de campo (eles só abrem a janela de
+	// 24h para receber ordens; botões de ação continuam tratados).
+	svc.IsBotExempt = func(ctx context.Context, from string) bool {
+		fc := messaging.CanonPhone(from)
+		techs, err := ticketsRepo.FieldTechs(ctx)
+		if err != nil {
+			return false
+		}
+		for _, t := range techs {
+			if messaging.CanonPhone(t.Telefone) == fc {
+				return true
+			}
+		}
+		return false
+	}
 	// notificarChamado avisa o solicitante: tenta texto livre (grátis, dentro da
 	// janela de 24h — o solicitante normalmente acabou de interagir); se a janela
 	// fechou, cai para o template aprovado. Sem janela aberta E sem template
