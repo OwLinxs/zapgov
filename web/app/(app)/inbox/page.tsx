@@ -627,7 +627,10 @@ export default function InboxPage() {
     if (!canTodas) setFilter((f) => (f === "" ? "aguardando" : f));
   }, [canTodas]);
 
-  const active = convs.find((c) => c.id === activeId) || null;
+  // Procura na lista principal E nos resultados de busca/Finalizados (server-side):
+  // conversas fora das ~100 recentes só existem em finBusca — sem isso o detalhe
+  // não abria ao clicar numa conversa vinda da busca.
+  const active = convs.find((c) => c.id === activeId) || finBusca.find((c) => c.id === activeId) || null;
 
   const loadConvs = useCallback(async () => {
     try {
