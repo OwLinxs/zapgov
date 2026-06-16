@@ -46,6 +46,9 @@ import {
   setConversationLabels,
   getToken,
   hhmm,
+  getTicketByConversation,
+  listKb,
+  type ApiKbArticle,
   type ApiConversation,
   type ApiMessage,
   type ApiDepartment,
@@ -594,6 +597,7 @@ export default function InboxPage() {
   const [erro, setErro] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null); // campo de mensagem (auto-resize)
+  const [artigosRel, setArtigosRel] = useState<ApiKbArticle[]>([]); // KB: sugestão ao atender chamado
 
   // Histórico por sessão (drawer)
   const [histOpen, setHistOpen] = useState(false);
@@ -842,6 +846,14 @@ export default function InboxPage() {
   useEffect(() => {
     if (activeId == null) return;
     setReplyTo(null); // trocar de conversa descarta a citação pendente
+    // Se a conversa é um chamado, sugere artigos da base relacionados (atender).
+    setArtigosRel([]);
+    getTicketByConversation(activeId)
+      .then((t) => {
+        if (!t) return;
+        return listKb({ q: t.titulo, categoria: t.categoria || undefined }).then((arts) => setArtigosRel(arts.slice(0, 3)));
+      })
+      .catch(() => {});
     loadMsgs(activeId);
     const t = setInterval(() => loadMsgs(activeId), 15000);
     return () => clearInterval(t);
@@ -1220,6 +1232,30 @@ export default function InboxPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Base de conhecimento: artigos relacionados ao chamado (atender). */}
+          {artigosRel.length > 0 && (
+            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--brand-soft)", flex: "none" }}>
+              <div className="row center" style={{ gap: 6, marginBottom: 5, fontSize: 11, fontWeight: 700, color: "var(--brand-text)" }}>
+                <Icon name="fileText" size={12} /> Pode ajudar (base de conhecimento)
+              </div>
+              <div className="row wrap" style={{ gap: 6 }}>
+                {artigosRel.map((a) => (
+                  <a
+                    key={a.id}
+                    href={`/base?art=${a.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="badge"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--brand)", color: "var(--brand-text)", cursor: "pointer", fontSize: 11.5, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={a.titulo}
+                  >
+                    {a.titulo}
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

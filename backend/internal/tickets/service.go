@@ -126,6 +126,10 @@ func (s *Service) Get(ctx context.Context, id int64) (*Ticket, error) {
 	return s.repo.Get(ctx, id)
 }
 
+func (s *Service) GetByConversation(ctx context.Context, convID int64) (*Ticket, error) {
+	return s.repo.GetByConversation(ctx, convID)
+}
+
 func (s *Service) Comments(ctx context.Context, id int64) ([]Comment, error) {
 	return s.repo.Comments(ctx, id)
 }

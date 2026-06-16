@@ -762,6 +762,9 @@ export async function listTickets(f?: { status?: string; prioridade?: string; ca
 }
 export const getTicketMetrics = () => get<ApiTicketMetrics>("/tickets/metrics");
 export const getTicket = (id: number) => get<{ ticket: ApiTicket; comments: ApiTicketComment[] }>(`/tickets/${id}`);
+// Chamado ligado a uma conversa (null se a conversa não é um chamado).
+export const getTicketByConversation = async (convId: number) =>
+  (await get<{ ticket: ApiTicket | null }>(`/tickets/by-conversation/${convId}`)).ticket;
 export const createTicket = (t: {
   titulo: string; descricao?: string; categoria?: string; prioridade?: string;
   solicitante_nome?: string; solicitante_fone?: string; secretaria?: string; local?: string;

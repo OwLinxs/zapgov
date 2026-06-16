@@ -14,6 +14,7 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Register(r fiber.Router) {
 	r.Get("/tickets", h.list)
 	r.Get("/tickets/metrics", h.metrics)
+	r.Get("/tickets/by-conversation/:convId", h.byConversation)
 	r.Post("/tickets", h.create)
 	r.Get("/tickets/:id", h.get)
 	r.Put("/tickets/:id/status", h.setStatus)
@@ -54,6 +55,18 @@ func (h *Handler) list(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"tickets": items})
+}
+
+func (h *Handler) byConversation(c *fiber.Ctx) error {
+	convID, err := c.ParamsInt("convId")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	t, err := h.svc.GetByConversation(c.Context(), int64(convID))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ticket": t}) // null se a conversa não é um chamado
 }
 
 func (h *Handler) metrics(c *fiber.Ctx) error {

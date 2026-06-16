@@ -45,6 +45,11 @@ export default function BasePage() {
     return () => clearTimeout(t);
   }, [load]);
   useEffect(() => { listKbCategorias().then(setCats).catch(() => {}); }, []);
+  // Deep-link /base?art=ID abre o artigo direto (vindo da sugestão no inbox).
+  useEffect(() => {
+    const art = new URLSearchParams(window.location.search).get("art");
+    if (art) setVerId(Number(art));
+  }, []);
 
   return (
     <>
