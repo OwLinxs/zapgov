@@ -438,6 +438,13 @@ func main() {
 	svc.OnResolved = func(ctx context.Context, convID int64) {
 		phone, name, errC := svc.ContatoDaConversa(ctx, convID)
 
+		// Reinicia o chatbot: limpa o estado do fluxo do contato, para que a
+		// PRÓXIMA mensagem dele recomece o bot do início (não continue de onde
+		// parou no atendimento anterior).
+		if errC == nil {
+			_ = flowRepo.ClearState(ctx, messaging.CanonPhone(phone))
+		}
+
 		// Mensagem de encerramento (se ativa).
 		if enc, err := settingsRepo.GetEncerramento(ctx); err == nil && enc.Ativo && enc.Msg != "" && errC == nil {
 			texto := strings.ReplaceAll(enc.Msg, "{{nome}}", firstName(name))
