@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/shell/Topbar";
 import {
-  Avatar, Button, Drawer, Dropdown, Field, Icon, Input, Modal, useToast,
+  Avatar, Button, Drawer, Field, Icon, Input, Modal, useToast,
 } from "@/components/ui";
 import {
   listTickets, getTicketMetrics, getTicket, createTicket, setTicketStatus,
@@ -267,7 +267,7 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
   const [coment, setComent] = useState("");
   const [interno, setInterno] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [techs, setTechs] = useState<ApiFieldTech[]>([]);
+  const [despachar, setDespachar] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -278,18 +278,6 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
   }, [id]);
 
   useEffect(() => { carregar(); }, [carregar]);
-  useEffect(() => { listFieldTechs().then(setTechs).catch(() => setTechs([])); }, []);
-
-  async function encaminhar(tech: ApiFieldTech) {
-    setBusy(true);
-    try {
-      await dispatchTicket(id, tech.id);
-      await carregar(); onMudou();
-      toast({ type: "success", title: "Ordem enviada", message: `Chamado encaminhado para ${tech.nome} no WhatsApp.` });
-    } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
-    } finally { setBusy(false); }
-  }
 
   async function mudarStatus(status: string) {
     setBusy(true);
@@ -365,24 +353,9 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
             </Button>
           )}
           {ticket.status !== "resolvido" && ticket.status !== "cancelado" && (
-            <Dropdown
-              trigger={
-                <button className="btn btn-secondary btn-sm" aria-disabled={busy}>
-                  <Icon name="send" size={14} /> Encaminhar p/ técnico
-                </button>
-              }
-            >
-              <div className="dropdown-label">Técnicos de campo</div>
-              {techs.length === 0 ? (
-                <div className="dropdown-item muted">Nenhum cadastrado (botão “Técnicos”)</div>
-              ) : (
-                techs.map((t) => (
-                  <div key={t.id} className="dropdown-item" onClick={() => encaminhar(t)}>
-                    <Icon name="user" size={15} /> {t.nome}
-                  </div>
-                ))
-              )}
-            </Dropdown>
+            <Button variant="secondary" size="sm" icon="send" onClick={() => setDespachar(true)}>
+              Encaminhar p/ técnico
+            </Button>
           )}
         </div>
 
@@ -429,7 +402,85 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
           </div>
         </div>
       </div>
+      {despachar && (
+        <DespacharModal ticket={ticket} onClose={() => setDespachar(false)}
+          onEnviado={() => { setDespachar(false); carregar(); onMudou(); }} />
+      )}
     </Drawer>
+  );
+}
+
+// ordemServico monta a mensagem padrão da ordem de serviço (editável antes de enviar).
+function ordemServico(t: ApiTicket): string {
+  let s = `🔧 Chamado #${t.numero}`;
+  if (t.categoria) s += ` — ${t.categoria}`;
+  s += "\n";
+  if (t.local) s += `📍 ${t.local}\n`;
+  if (t.secretaria) s += `🏢 ${t.secretaria}\n`;
+  s += `📋 ${t.titulo}\n`;
+  if (t.descricao) s += `${t.descricao}\n`;
+  if (t.solicitante_nome || t.solicitante_fone) {
+    s += `👤 ${t.solicitante_nome}`;
+    if (t.solicitante_fone) s += ` (${t.solicitante_fone})`;
+    s += "\n";
+  }
+  return s.trimEnd();
+}
+
+function DespacharModal({ ticket, onClose, onEnviado }: { ticket: ApiTicket; onClose: () => void; onEnviado: () => void }) {
+  const toast = useToast();
+  const [techs, setTechs] = useState<ApiFieldTech[]>([]);
+  const [techId, setTechId] = useState(0);
+  const [texto, setTexto] = useState(ordemServico(ticket));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listFieldTechs().then((ts) => { setTechs(ts); if (ts[0]) setTechId(ts[0].id); }).catch(() => setTechs([]));
+  }, []);
+
+  async function enviar() {
+    if (!techId) return;
+    setBusy(true);
+    try {
+      const tech = techs.find((t) => t.id === techId);
+      await dispatchTicket(ticket.id, techId, texto);
+      toast({ type: "success", title: "Ordem enviada", message: `Encaminhado para ${tech?.nome} no WhatsApp.` });
+      onEnviado();
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open onClose={onClose} width={520}>
+      <div className="modal-head">
+        <div className="modal-title">Encaminhar para técnico</div>
+        <div className="modal-sub">Edite a ordem com o que você levantou na conversa antes de enviar.</div>
+      </div>
+      <div className="modal-body col" style={{ gap: 14 }}>
+        <Field label="Técnico">
+          {techs.length === 0 ? (
+            <div className="muted" style={{ fontSize: 12.5 }}>Nenhum técnico cadastrado (botão “Técnicos” na tela de chamados).</div>
+          ) : (
+            <select className="select" value={techId} onChange={(e) => setTechId(Number(e.target.value))}>
+              {techs.map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.telefone}</option>)}
+            </select>
+          )}
+        </Field>
+        <Field label="Mensagem (ordem de serviço)">
+          <textarea className="input" rows={9} value={texto} onChange={(e) => setTexto(e.target.value)} style={{ lineHeight: 1.5 }} />
+        </Field>
+        <div className="muted" style={{ fontSize: 11.5 }}>
+          O técnico recebe um botão “✅ Finalizar #{ticket.numero}” junto da mensagem.
+        </div>
+      </div>
+      <div className="modal-foot">
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" icon="send" aria-disabled={busy || !techId || !texto.trim()} onClick={enviar}>
+          {busy ? "Enviando…" : "Enviar ordem"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

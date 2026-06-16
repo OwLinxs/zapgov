@@ -782,8 +782,9 @@ export interface ApiFieldTech {
 export const listFieldTechs = async () => (await get<{ techs: ApiFieldTech[] }>("/field-techs")).techs ?? [];
 export const createFieldTech = (nome: string, telefone: string) => post<ApiFieldTech>("/field-techs", { nome, telefone });
 export const deleteFieldTech = (id: number) => del(`/field-techs/${id}`);
-export const dispatchTicket = (id: number, techId: number) =>
-  post<{ ok: boolean; tecnico: string }>(`/tickets/${id}/dispatch`, { tech_id: techId });
+// texto vazio = ordem padrão; preenchido = mensagem editada pelo operador.
+export const dispatchTicket = (id: number, techId: number, texto = "") =>
+  post<{ ok: boolean; tecnico: string }>(`/tickets/${id}/dispatch`, { tech_id: techId, texto });
 export const assignTicket = (id: number, tecnico?: string) => post<ApiTicket>(`/tickets/${id}/assign`, { tecnico: tecnico || "" }, "PUT");
 export const commentTicket = (id: number, body: string, interno = false) =>
   post<ApiTicketComment>(`/tickets/${id}/comment`, { body, interno });

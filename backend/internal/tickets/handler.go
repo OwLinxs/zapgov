@@ -35,12 +35,13 @@ func (h *Handler) dispatch(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
 	var in struct {
-		TechID int64 `json:"tech_id"`
+		TechID int64  `json:"tech_id"`
+		Texto  string `json:"texto"`
 	}
 	if err := c.BodyParser(&in); err != nil || in.TechID == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tech_id é obrigatório"})
 	}
-	tech, err := h.svc.Dispatch(c.Context(), int64(id), in.TechID)
+	tech, err := h.svc.Dispatch(c.Context(), int64(id), in.TechID, in.Texto)
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
 	}

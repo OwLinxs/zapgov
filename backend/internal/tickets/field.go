@@ -101,8 +101,9 @@ func ordemServico(t *Ticket) string {
 }
 
 // Dispatch encaminha o chamado a um técnico de campo: envia a ordem de serviço
-// no WhatsApp dele, atribui o chamado e registra na timeline.
-func (s *Service) Dispatch(ctx context.Context, ticketID, techID int64) (*FieldTech, error) {
+// no WhatsApp dele, atribui o chamado e registra na timeline. texto vazio usa a
+// ordem padrão; preenchido permite o operador editar/enriquecer antes de enviar.
+func (s *Service) Dispatch(ctx context.Context, ticketID, techID int64, texto string) (*FieldTech, error) {
 	t, err := s.repo.Get(ctx, ticketID)
 	if err != nil {
 		return nil, fmt.Errorf("chamado não encontrado")
@@ -111,8 +112,11 @@ func (s *Service) Dispatch(ctx context.Context, ticketID, techID int64) (*FieldT
 	if err != nil {
 		return nil, fmt.Errorf("técnico não encontrado")
 	}
+	if texto == "" {
+		texto = ordemServico(t)
+	}
 	if s.OnDispatch != nil {
-		s.OnDispatch(ctx, tech.Telefone, ordemServico(t), t)
+		s.OnDispatch(ctx, tech.Telefone, texto, t)
 	}
 	// Atribui ao técnico e marca em andamento (silencioso — sem notificar o
 	// solicitante aqui; o aviso a ele segue pelo chat).
