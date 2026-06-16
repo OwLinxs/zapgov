@@ -35,8 +35,9 @@ type Service struct {
 
 	// OnInbound, se definido, é chamado para cada mensagem recebida NOVA
 	// (não reentregue). Usado pelo chatbot para autoatendimento, sem acoplar
-	// o pacote messaging ao chatbot.
-	OnInbound func(ctx context.Context, from, name, body string)
+	// o pacote messaging ao chatbot. buttonID é a chave do botão/lista tocado
+	// (vazio em texto livre) — identificador confiável, não trunca como o título.
+	OnInbound func(ctx context.Context, from, name, body, buttonID string)
 
 	// OnEvent, se definido, publica eventos em tempo real (SSE) para o front.
 	// tenantID isola a entrega; name/preview só em mensagem recebida.
@@ -364,7 +365,7 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 
 		// Caso contrário (fase de bot), roda o fluxo.
 		if s.OnInbound != nil {
-			s.OnInbound(ctx, in.From, in.Name, in.Body)
+			s.OnInbound(ctx, in.From, in.Name, in.Body, in.ButtonID)
 		}
 	}
 

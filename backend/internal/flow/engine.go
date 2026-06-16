@@ -33,8 +33,9 @@ func NewService(repo *Repository, replier Replier) *Service {
 }
 
 // HandleInbound executa o fluxo para uma mensagem recebida.
-// Assinatura casa com messaging.Service.OnInbound.
-func (s *Service) HandleInbound(ctx context.Context, from, name, body string) {
+// Assinatura casa com messaging.Service.OnInbound. buttonID = chave do botão/
+// lista tocado (vazio em texto livre).
+func (s *Service) HandleInbound(ctx context.Context, from, name, body, buttonID string) {
 	// Canonicaliza o telefone (reinsere o 9 do BR) para casar com a chave das
 	// conversas. Sem isso, o Handoff/AssignDepartment não acham a conversa e o
 	// status nunca sai de bot → o menu reaparece a cada mensagem.
@@ -54,10 +55,10 @@ func (s *Service) HandleInbound(ctx context.Context, from, name, body string) {
 		log.Printf("flow: estado de %s: %v", from, err)
 		return
 	}
-	s.run(ctx, from, name, g, st, body)
+	s.run(ctx, from, name, g, st, body, buttonID)
 }
 
-func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State, input string) {
+func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State, input, buttonID string) {
 	vars := st.Vars
 	if vars == nil {
 		vars = map[string]string{}
@@ -85,10 +86,10 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 		}
 		switch node.Type {
 		case "menu":
-			in := strings.TrimSpace(input)
 			var md menuData
 			_ = json.Unmarshal(node.Data, &md)
-			opt := matchMenuOption(md, in)
+			// Casa primeiro pela chave do botão (não trunca); senão pelo texto.
+			opt := matchMenuOption(md, buttonID, input)
 			if opt == nil {
 				s.sendMenu(ctx, from, node) // opção inválida → reenvia menu
 				return
@@ -230,11 +231,20 @@ func (s *Service) sendMenu(ctx context.Context, to string, node *Node) {
 	}
 }
 
-// matchMenuOption acha a opção escolhida por chave digitada ou rótulo tocado.
-func matchMenuOption(md menuData, input string) *struct {
+// matchMenuOption acha a opção escolhida: prioriza a chave do botão/lista tocado
+// (buttonID — confiável, não trunca); senão casa por chave digitada ou rótulo.
+func matchMenuOption(md menuData, buttonID, input string) *struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 } {
+	bid := strings.TrimSpace(buttonID)
+	if bid != "" {
+		for i := range md.Options {
+			if strings.EqualFold(strings.TrimSpace(md.Options[i].Key), bid) {
+				return &md.Options[i]
+			}
+		}
+	}
 	in := strings.TrimSpace(input)
 	for i := range md.Options {
 		o := &md.Options[i]
