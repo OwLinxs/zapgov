@@ -282,6 +282,17 @@ func main() {
 			[]string{fmt.Sprintf("%d", t.Numero)})
 	}
 	tickets.NewHandler(ticketsSvc).Register(api)
+	// Atendimento pelo chat: quando a conversa é assumida/resolvida/transferida,
+	// espelha o status no chamado ligado (kanban reflete o que acontece no inbox).
+	svc.OnConversationStatus = func(ctx context.Context, convID int64, status, atendente string) {
+		ts := map[string]string{"em_atendimento": "em_andamento", "resolvido": "resolvido", "aguardando": "aguardando"}[status]
+		if ts == "" {
+			return
+		}
+		if err := ticketsSvc.SyncFromConversation(ctx, convID, ts, atendente); err != nil {
+			slog.Warn("chamado: sincronizar do chat", "conv", convID, "err", err)
+		}
+	}
 
 	// Motor de fluxo (grafo de blocos). É ele que processa o inbound agora.
 	flowRepo := flow.NewRepository(pool)

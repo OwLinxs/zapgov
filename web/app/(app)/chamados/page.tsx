@@ -1,17 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/shell/Topbar";
 import {
   Avatar, Button, Drawer, Field, Icon, Input, Modal, useToast,
 } from "@/components/ui";
-import { ConversaHistorico } from "@/components/inbox/ConversaHistorico";
 import {
   listTickets, getTicketMetrics, getTicket, createTicket, setTicketStatus,
-  assignTicket, commentTicket,
+  setTicketPrioridade, commentTicket,
   type ApiTicket, type ApiTicketComment, type ApiTicketMetrics,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 
 // Colunas do Kanban (status ativos; cancelado fica fora da visão principal).
 const COLUNAS: { status: ApiTicket["status"]; label: string }[] = [
@@ -258,13 +257,12 @@ function NovoChamadoModal({ open, onClose, onCriado }: { open: boolean; onClose:
 
 function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => void; onMudou: () => void }) {
   const toast = useToast();
-  const { user } = useAuth();
+  const router = useRouter();
   const [ticket, setTicket] = useState<ApiTicket | null>(null);
   const [comments, setComments] = useState<ApiTicketComment[]>([]);
   const [coment, setComent] = useState("");
   const [interno, setInterno] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [verConv, setVerConv] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -286,12 +284,12 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
       toast({ type: "error", title: "Erro", message: (e as Error).message });
     } finally { setBusy(false); }
   }
-  async function assumir() {
+  async function mudarPrioridade(prioridade: string) {
     setBusy(true);
     try {
-      await assignTicket(id, user?.nome);
+      await setTicketPrioridade(id, prioridade);
       await carregar(); onMudou();
-      toast({ type: "success", title: "Chamado atribuído a você" });
+      toast({ type: "success", title: "Prioridade atualizada" });
     } catch (e) {
       toast({ type: "error", title: "Erro", message: (e as Error).message });
     } finally { setBusy(false); }
@@ -342,27 +340,27 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
           <Linha k="Aberto em" v={fmtData(ticket.criado_em)} />
         </div>
 
-        {/* Conversa de origem (chamado aberto pelo WhatsApp) */}
+        {/* Atendimento é pelo chat: abre a conversa no inbox. */}
         {ticket.conversation_id && (
-          <Button variant="secondary" size="sm" icon="message" onClick={() => setVerConv(true)}>
-            Ver conversa de origem (WhatsApp)
+          <Button variant="wa" size="sm" icon="message" onClick={() => router.push(`/inbox?conv=${ticket.conversation_id}`)}>
+            Atender no chat (WhatsApp)
           </Button>
         )}
 
-        {/* Ações */}
-        <div className="row center wrap" style={{ gap: 8 }}>
-          {!ticket.tecnico && <Button size="sm" variant="primary" icon="reply" aria-disabled={busy} onClick={assumir}>Assumir</Button>}
-          {ticket.status !== "em_andamento" && ticket.status !== "resolvido" && ticket.status !== "cancelado" && (
-            <Button size="sm" variant="secondary" aria-disabled={busy} onClick={() => mudarStatus("em_andamento")}>Em andamento</Button>
-          )}
-          {(ticket.status === "em_andamento" || ticket.status === "aguardando") && (
-            <Button size="sm" variant="secondary" aria-disabled={busy} onClick={() => mudarStatus("aguardando")}>Aguardando</Button>
-          )}
+        {/* Gestão leve (atender é pelo chat): prioridade, cancelar. */}
+        <div className="row center wrap" style={{ gap: 8, alignItems: "flex-end" }}>
+          <div className="col" style={{ gap: 4 }}>
+            <span className="field-label">Prioridade</span>
+            <select className="select" style={{ width: "auto" }} value={ticket.prioridade} aria-disabled={busy}
+              onChange={(e) => mudarPrioridade(e.target.value)}>
+              <option value="baixa">Baixa</option>
+              <option value="media">Média</option>
+              <option value="alta">Alta</option>
+              <option value="critica">Crítica</option>
+            </select>
+          </div>
           {ticket.status !== "resolvido" && ticket.status !== "cancelado" && (
-            <Button size="sm" variant="wa" icon="check" aria-disabled={busy} onClick={() => mudarStatus("resolvido")}>Resolver</Button>
-          )}
-          {ticket.status === "resolvido" && (
-            <Button size="sm" variant="secondary" aria-disabled={busy} onClick={() => mudarStatus("em_andamento")}>Reabrir</Button>
+            <Button size="sm" variant="danger" icon="ban" aria-disabled={busy} onClick={() => mudarStatus("cancelado")}>Cancelar chamado</Button>
           )}
         </div>
 
@@ -392,9 +390,6 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
           </div>
         </div>
       </div>
-      {verConv && ticket.conversation_id && (
-        <ConversaHistorico convId={ticket.conversation_id} onClose={() => setVerConv(false)} />
-      )}
     </Drawer>
   );
 }

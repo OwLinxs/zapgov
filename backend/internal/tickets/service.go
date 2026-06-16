@@ -174,3 +174,22 @@ func (s *Service) Assign(ctx context.Context, id int64, tecnico string) (*Ticket
 func (s *Service) Metrics(ctx context.Context) (Metrics, error) {
 	return s.repo.Metrics(ctx)
 }
+
+// SetPrioridade muda a prioridade (gestão pelo kanban) e recalcula o SLA.
+func (s *Service) SetPrioridade(ctx context.Context, id int64, prioridade string) (*Ticket, error) {
+	if !prioridadeValida(prioridade) {
+		return nil, fmt.Errorf("prioridade inválida")
+	}
+	atual, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	venc := slaVenc(atual.CriadoEm, prioridade, s.slaHoras(ctx))
+	return s.repo.SetPrioridade(ctx, id, prioridade, venc)
+}
+
+// SyncFromConversation espelha no chamado a situação da conversa atendida pelo
+// chat (assumida → em_andamento, resolvida → resolvido, etc).
+func (s *Service) SyncFromConversation(ctx context.Context, convID int64, status, tecnico string) error {
+	return s.repo.SyncByConversation(ctx, convID, status, tecnico)
+}

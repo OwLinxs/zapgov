@@ -18,7 +18,26 @@ func (h *Handler) Register(r fiber.Router) {
 	r.Get("/tickets/:id", h.get)
 	r.Put("/tickets/:id/status", h.setStatus)
 	r.Put("/tickets/:id/assign", h.assign)
+	r.Put("/tickets/:id/prioridade", h.setPrioridade)
 	r.Post("/tickets/:id/comment", h.comment)
+}
+
+func (h *Handler) setPrioridade(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var in struct {
+		Prioridade string `json:"prioridade"`
+	}
+	if err := c.BodyParser(&in); err != nil || in.Prioridade == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "prioridade é obrigatória"})
+	}
+	t, err := h.svc.SetPrioridade(c.Context(), int64(id), in.Prioridade)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(t)
 }
 
 // operador devolve o nome do usuário logado (autor de comentário/atribuição).

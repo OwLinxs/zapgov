@@ -199,7 +199,10 @@ func (s *Service) abrirChamado(ctx context.Context, from string, vars map[string
 		s.send(ctx, from, "Não consegui abrir o chamado agora. Tente novamente mais tarde.")
 		return
 	}
-	s.send(ctx, from, fmt.Sprintf("✅ Chamado *#%d* aberto! Vamos te avisar por aqui sobre o andamento.", numero))
+	s.send(ctx, from, fmt.Sprintf("✅ Chamado *#%d* aberto! Um técnico vai te responder por aqui.", numero))
+	// Coloca a conversa na fila do inbox (com os dados coletados) — o técnico
+	// atende o chamado pelo chat, como um atendimento normal.
+	_ = s.repo.Handoff(ctx, from, "", vars)
 }
 
 func (s *Service) send(ctx context.Context, to, body string) {

@@ -652,6 +652,12 @@ export default function InboxPage() {
   const activeIdRef = useRef<number | null>(null);
   activeIdRef.current = activeId;
 
+  // Deep-link: /inbox?conv=ID abre direto a conversa (vindo do kanban de chamados).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("conv");
+    if (p) setActiveId(Number(p));
+  }, []);
+
   // Carga inicial + polling lento (fallback do SSE).
   useEffect(() => {
     loadConvs();

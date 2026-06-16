@@ -765,6 +765,7 @@ export const createTicket = (t: {
   solicitante_nome?: string; solicitante_fone?: string; secretaria?: string; local?: string;
 }) => post<ApiTicket>("/tickets", t);
 export const setTicketStatus = (id: number, status: string) => post<ApiTicket>(`/tickets/${id}/status`, { status }, "PUT");
+export const setTicketPrioridade = (id: number, prioridade: string) => post<ApiTicket>(`/tickets/${id}/prioridade`, { prioridade }, "PUT");
 export const assignTicket = (id: number, tecnico?: string) => post<ApiTicket>(`/tickets/${id}/assign`, { tecnico: tecnico || "" }, "PUT");
 export const commentTicket = (id: number, body: string, interno = false) =>
   post<ApiTicketComment>(`/tickets/${id}/comment`, { body, interno });

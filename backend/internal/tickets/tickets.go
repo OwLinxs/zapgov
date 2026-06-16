@@ -157,6 +157,24 @@ func (r *Repository) SetStatus(ctx context.Context, id int64, status string) (*T
 	return &t, nil
 }
 
+// SetPrioridade muda a prioridade e recalcula o prazo de SLA.
+func (r *Repository) SetPrioridade(ctx context.Context, id int64, prioridade string, slaVenc time.Time) (*Ticket, error) {
+	rows, err := r.pool.Query(ctx, `
+		UPDATE tickets SET prioridade = $3, sla_venc = $4
+		WHERE id = $1 AND tenant_id = $2
+		RETURNING `+cols,
+		id, tenantctx.From(ctx), prioridade, slaVenc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	t, err := pgx.CollectOneRow(rows, scan)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // Assign atribui um técnico (e marca em_andamento se ainda estava aberto).
 func (r *Repository) Assign(ctx context.Context, id int64, tecnico string) (*Ticket, error) {
 	rows, err := r.pool.Query(ctx, `
@@ -176,6 +194,21 @@ func (r *Repository) Assign(ctx context.Context, id int64, tecnico string) (*Tic
 		return nil, err
 	}
 	return &t, nil
+}
+
+// SyncByConversation espelha no chamado a mudança de situação da conversa
+// (atendimento pelo chat). Atualização silenciosa (sem notificar o solicitante —
+// o chat já cuida disso). Só mexe em chamados não-finais. tecnico vazio = mantém.
+func (r *Repository) SyncByConversation(ctx context.Context, convID int64, status, tecnico string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE tickets SET
+			status = $3,
+			tecnico = CASE WHEN $4 <> '' THEN $4 ELSE tecnico END,
+			atribuido_em = CASE WHEN $4 <> '' AND atribuido_em IS NULL THEN now() ELSE atribuido_em END,
+			resolvido_em = CASE WHEN $3 IN ('resolvido','cancelado') THEN now() ELSE resolvido_em END
+		WHERE conversation_id = $1 AND tenant_id = $2 AND status NOT IN ('resolvido','cancelado')`,
+		convID, tenantctx.From(ctx), status, tecnico)
+	return err
 }
 
 // AddComment grava um andamento na timeline.

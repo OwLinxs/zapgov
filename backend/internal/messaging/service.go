@@ -72,6 +72,11 @@ type Service struct {
 	// de CAMPANHA muda (webhook) — atualiza os contadores do disparo
 	// (entregues/lidas/falhas) sem acoplar messaging ao pacote campaigns.
 	OnCampaignStatus func(ctx context.Context, campaignID int64, oldStatus, newStatus string)
+
+	// OnConversationStatus, se definido, é chamado quando uma conversa muda de
+	// situação (assumida/resolvida/transferida). Usado para espelhar o status
+	// no chamado (ticket) ligado àquela conversa, sem acoplar messaging a tickets.
+	OnConversationStatus func(ctx context.Context, convID int64, status, atendente string)
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -523,6 +528,7 @@ func (s *Service) Transfer(ctx context.Context, convID int64, setor string) erro
 		return err
 	}
 	s.emit(ctx, 0, "conversation")
+	s.notifyConvStatus(ctx, convID, "aguardando", "")
 	return nil
 }
 
@@ -547,12 +553,27 @@ func (s *Service) ResolveBulk(ctx context.Context, ids []int64) (int, error) {
 
 // Claim: atendente assume a conversa.
 func (s *Service) Claim(ctx context.Context, id int64, atendente string) error {
-	return s.repo.Claim(ctx, id, atendente)
+	if err := s.repo.Claim(ctx, id, atendente); err != nil {
+		return err
+	}
+	s.notifyConvStatus(ctx, id, "em_atendimento", atendente)
+	return nil
 }
 
 // ClaimIfQueued: assume a conversa apenas se estiver na fila.
 func (s *Service) ClaimIfQueued(ctx context.Context, id int64, atendente string) error {
-	return s.repo.ClaimIfQueued(ctx, id, atendente)
+	if err := s.repo.ClaimIfQueued(ctx, id, atendente); err != nil {
+		return err
+	}
+	s.notifyConvStatus(ctx, id, "em_atendimento", atendente)
+	return nil
+}
+
+// notifyConvStatus espelha a mudança de situação da conversa (p/ o chamado).
+func (s *Service) notifyConvStatus(ctx context.Context, convID int64, status, atendente string) {
+	if s.OnConversationStatus != nil {
+		s.OnConversationStatus(ctx, convID, status, atendente)
+	}
 }
 
 // Resolve: encerra o atendimento.
@@ -564,6 +585,9 @@ func (s *Service) Resolve(ctx context.Context, id int64) error {
 	if s.OnResolved != nil {
 		s.OnResolved(ctx, id)
 	}
+	// Espelha no chamado ligado (resolvido). O aviso ao solicitante já vem do
+	// encerramento da conversa — a sincronização aqui é silenciosa (só status).
+	s.notifyConvStatus(ctx, id, "resolvido", "")
 	return nil
 }
 
