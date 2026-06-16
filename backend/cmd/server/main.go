@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -282,11 +283,36 @@ func main() {
 		notificarChamado(ctx, t.SolicitanteFone, texto, "chamado_resolvido",
 			[]string{fmt.Sprintf("%d", t.Numero)})
 	}
-	// Despacho: envia a ordem de serviço no WhatsApp do técnico de campo (texto
-	// livre na janela; senão template 'despacho_chamado').
+	// Despacho: envia a ordem de serviço no WhatsApp do técnico de campo COM um
+	// botão "Finalizar #N" cuja chave carrega o id do chamado (fechar_<id>) — assim
+	// o técnico, mesmo com vários chamados, fecha o certo. Janela aberta → botão
+	// interativo; fechada → template (sem botão).
 	ticketsSvc.OnDispatch = func(ctx context.Context, fone, texto string, t *tickets.Ticket) {
+		opts := []messaging.MenuOption{{Key: fmt.Sprintf("fechar_%d", t.ID), Label: fmt.Sprintf("✅ Finalizar #%d", t.Numero)}}
+		if _, err := svc.SendMenu(ctx, fone, texto, opts); err == nil {
+			return
+		}
 		notificarChamado(ctx, fone, texto, "despacho_chamado",
 			[]string{fmt.Sprintf("%d", t.Numero), firstNonEmpty(t.Local, t.Secretaria, "—"), t.Titulo})
+	}
+	// Técnico tocou "Finalizar #N": fecha o chamado identificado pela chave do
+	// botão e confirma. O fechamento notifica o solicitante (OnResolved).
+	svc.OnButtonAction = func(ctx context.Context, from, buttonID string) bool {
+		idStr, ok := strings.CutPrefix(buttonID, "fechar_")
+		if !ok {
+			return false
+		}
+		tid, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			return false
+		}
+		t, err := ticketsSvc.SetStatus(ctx, tid, "resolvido")
+		if err != nil {
+			_, _ = svc.SendText(ctx, from, "Não consegui finalizar esse chamado. Confira com a equipe.")
+			return true
+		}
+		_, _ = svc.SendText(ctx, from, fmt.Sprintf("✅ Chamado #%d finalizado. Obrigado!", t.Numero))
+		return true
 	}
 	tickets.NewHandler(ticketsSvc).Register(api, opsOnly)
 	// Base de conhecimento (T.I.): leitura aberta, gestão p/ admin/supervisor.

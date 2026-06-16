@@ -78,6 +78,10 @@ type Service struct {
 	// situação (assumida/resolvida/transferida). Usado para espelhar o status
 	// no chamado (ticket) ligado àquela conversa, sem acoplar messaging a tickets.
 	OnConversationStatus func(ctx context.Context, convID int64, status, atendente string)
+
+	// OnButtonAction, se definido, trata o toque num botão de ação (ButtonID).
+	// true = consumido (não roda o bot). Ex.: técnico finaliza chamado por botão.
+	OnButtonAction func(ctx context.Context, from, buttonID string) bool
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -329,6 +333,12 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		if nome == "" {
 			nome = in.From
 		}
+		// Ação por botão (ex.: técnico de campo confirma finalização de um chamado).
+		// O ButtonID identifica a ação/alvo; consome sem rodar o bot.
+		if s.OnButtonAction != nil && in.ButtonID != "" && s.OnButtonAction(ctx, in.From, in.ButtonID) {
+			continue
+		}
+
 		// Resposta de pesquisa de satisfação: grava a nota, agradece e devolve a
 		// conversa a resolvida — não reabre fila nem dispara bot.
 		if s.OnSurveyAnswer != nil && s.OnSurveyAnswer(ctx, convID, in.ButtonID, in.Body, in.From) {
