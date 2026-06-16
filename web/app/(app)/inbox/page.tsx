@@ -562,7 +562,7 @@ function MinhasRespostasModal({
 export default function InboxPage() {
   const toast = useToast();
   const { user } = useAuth();
-  const { reset: resetNotif } = useNotifications();
+  const { reset: resetNotif, lastEvent } = useNotifications();
   const [convs, setConvs] = useState<ApiConversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [msgs, setMsgs] = useState<ApiMessage[]>([]);
@@ -657,6 +657,19 @@ export default function InboxPage() {
     const p = new URLSearchParams(window.location.search).get("conv");
     if (p) setActiveId(Number(p));
   }, []);
+
+  // Tempo real: recarrega na hora ao receber um evento SSE (mensagem recebida,
+  // mudança de conversa/status), sem esperar o polling. Se o evento é da conversa
+  // aberta, recarrega o chat também.
+  useEffect(() => {
+    if (!lastEvent) return;
+    loadConvs();
+    const aid = activeIdRef.current;
+    if (aid && (!lastEvent.conversation_id || lastEvent.conversation_id === aid)) {
+      loadMsgs(aid);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastEvent]);
 
   // Carga inicial + polling lento (fallback do SSE).
   useEffect(() => {

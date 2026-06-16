@@ -1,14 +1,24 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { getToken } from "@/lib/api";
+
+// Evento de tempo real (SSE) — o inbox observa para recarregar na hora.
+export interface SseEvent {
+  type: string; // message | conversation | status
+  conversation_id?: number;
+  name?: string;
+  preview?: string;
+  seq: number; // muda a cada evento (gatilho de efeito)
+}
 
 interface NotifState {
   unread: number;
   reset: () => void;
+  lastEvent: SseEvent | null;
 }
 
-const Ctx = createContext<NotifState>({ unread: 0, reset: () => {} });
+const Ctx = createContext<NotifState>({ unread: 0, reset: () => {}, lastEvent: null });
 
 // Beep curto via WebAudio (sem asset). Best-effort — alguns browsers exigem gesto.
 function beep() {
@@ -31,6 +41,8 @@ function beep() {
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [unread, setUnread] = useState(0);
+  const [lastEvent, setLastEvent] = useState<SseEvent | null>(null);
+  const seqRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -44,7 +56,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     es.onmessage = (ev) => {
       try {
         const e = JSON.parse(ev.data);
-        // Só notifica mensagem RECEBIDA (tem nome). Envio do atendente não tem.
+        // Publica TODO evento para o inbox recarregar na hora (tempo real).
+        seqRef.current += 1;
+        setLastEvent({ type: e.type, conversation_id: e.conversation_id, name: e.name, preview: e.preview, seq: seqRef.current });
+        // Notifica só mensagem RECEBIDA (tem nome). Envio do atendente não tem.
         if (e.type === "message" && e.name) {
           setUnread((u) => u + 1);
           beep();
@@ -64,7 +79,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reset = useCallback(() => setUnread(0), []);
-  return <Ctx.Provider value={{ unread, reset }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ unread, reset, lastEvent }}>{children}</Ctx.Provider>;
 }
 
 export const useNotifications = () => useContext(Ctx);

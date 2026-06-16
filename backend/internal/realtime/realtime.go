@@ -81,6 +81,9 @@ func (h *Hub) Register(r fiber.Router, resolve func(token string) (int64, bool))
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
 		c.Set("Connection", "keep-alive")
+		// Desabilita o buffering do proxy (Nginx/NPM) p/ esta resposta — sem isso
+		// os eventos SSE ficam presos no buffer e chegam atrasados/em lote.
+		c.Set("X-Accel-Buffering", "no")
 
 		cl := h.subscribe(tenant)
 		c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
