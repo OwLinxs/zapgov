@@ -282,7 +282,13 @@ func main() {
 		notificarChamado(ctx, t.SolicitanteFone, texto, "chamado_resolvido",
 			[]string{fmt.Sprintf("%d", t.Numero)})
 	}
-	tickets.NewHandler(ticketsSvc).Register(api)
+	// Despacho: envia a ordem de serviço no WhatsApp do técnico de campo (texto
+	// livre na janela; senão template 'despacho_chamado').
+	ticketsSvc.OnDispatch = func(ctx context.Context, fone, texto string, t *tickets.Ticket) {
+		notificarChamado(ctx, fone, texto, "despacho_chamado",
+			[]string{fmt.Sprintf("%d", t.Numero), firstNonEmpty(t.Local, t.Secretaria, "—"), t.Titulo})
+	}
+	tickets.NewHandler(ticketsSvc).Register(api, opsOnly)
 	// Base de conhecimento (T.I.): leitura aberta, gestão p/ admin/supervisor.
 	kb.NewHandler(kb.NewRepository(pool)).Register(api, opsOnly)
 	// Atendimento pelo chat: quando a conversa é assumida/resolvida/transferida,

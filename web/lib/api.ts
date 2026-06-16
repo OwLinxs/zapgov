@@ -771,6 +771,19 @@ export const createTicket = (t: {
 }) => post<ApiTicket>("/tickets", t);
 export const setTicketStatus = (id: number, status: string) => post<ApiTicket>(`/tickets/${id}/status`, { status }, "PUT");
 export const setTicketPrioridade = (id: number, prioridade: string) => post<ApiTicket>(`/tickets/${id}/prioridade`, { prioridade }, "PUT");
+
+// Técnicos de campo (contatos de WhatsApp que recebem ordens de serviço).
+export interface ApiFieldTech {
+  id: number;
+  nome: string;
+  telefone: string;
+  ativo: boolean;
+}
+export const listFieldTechs = async () => (await get<{ techs: ApiFieldTech[] }>("/field-techs")).techs ?? [];
+export const createFieldTech = (nome: string, telefone: string) => post<ApiFieldTech>("/field-techs", { nome, telefone });
+export const deleteFieldTech = (id: number) => del(`/field-techs/${id}`);
+export const dispatchTicket = (id: number, techId: number) =>
+  post<{ ok: boolean; tecnico: string }>(`/tickets/${id}/dispatch`, { tech_id: techId });
 export const assignTicket = (id: number, tecnico?: string) => post<ApiTicket>(`/tickets/${id}/assign`, { tecnico: tecnico || "" }, "PUT");
 export const commentTicket = (id: number, body: string, interno = false) =>
   post<ApiTicketComment>(`/tickets/${id}/comment`, { body, interno });

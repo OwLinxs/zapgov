@@ -1,6 +1,7 @@
 package tickets
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -46,6 +47,18 @@ func TestSLAVenc(t *testing.T) {
 	got = slaVenc(base, "xxx", map[string]int{})
 	if want := base.Add(24 * time.Hour); !got.Equal(want) {
 		t.Errorf("desconhecida: got %v, want %v", got, want)
+	}
+}
+
+func TestOrdemServico(t *testing.T) {
+	tk := &Ticket{Numero: 42, Categoria: "Hardware", Local: "UBS Alvorada",
+		Secretaria: "Saúde", Titulo: "Impressora não liga", Descricao: "sem energia",
+		SolicitanteNome: "Maria", SolicitanteFone: "5546999990000"}
+	msg := ordemServico(tk)
+	for _, want := range []string{"#42", "Hardware", "UBS Alvorada", "Saúde", "Impressora não liga", "Maria", "5546999990000"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("ordemServico sem %q em:\n%s", want, msg)
+		}
 	}
 }
 

@@ -11,7 +11,8 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 // Register monta as rotas. Todas exigem login (api já é autenticado); abrir e
 // operar chamado é de qualquer usuário interno — o front limita o menu ao T.I.
-func (h *Handler) Register(r fiber.Router) {
+// gestor (admin/supervisor) gerencia a lista de técnicos de campo.
+func (h *Handler) Register(r fiber.Router, gestor fiber.Handler) {
 	r.Get("/tickets", h.list)
 	r.Get("/tickets/metrics", h.metrics)
 	r.Get("/tickets/by-conversation/:convId", h.byConversation)
@@ -21,6 +22,63 @@ func (h *Handler) Register(r fiber.Router) {
 	r.Put("/tickets/:id/assign", h.assign)
 	r.Put("/tickets/:id/prioridade", h.setPrioridade)
 	r.Post("/tickets/:id/comment", h.comment)
+	r.Post("/tickets/:id/dispatch", h.dispatch)
+	// Técnicos de campo (lista de WhatsApp).
+	r.Get("/field-techs", h.listTechs)
+	r.Post("/field-techs", gestor, h.createTech)
+	r.Delete("/field-techs/:id", gestor, h.deleteTech)
+}
+
+func (h *Handler) dispatch(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var in struct {
+		TechID int64 `json:"tech_id"`
+	}
+	if err := c.BodyParser(&in); err != nil || in.TechID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "tech_id é obrigatório"})
+	}
+	tech, err := h.svc.Dispatch(c.Context(), int64(id), in.TechID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true, "tecnico": tech.Nome})
+}
+
+func (h *Handler) listTechs(c *fiber.Ctx) error {
+	items, err := h.svc.repo.FieldTechs(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"techs": items})
+}
+
+func (h *Handler) createTech(c *fiber.Ctx) error {
+	var in struct {
+		Nome     string `json:"nome"`
+		Telefone string `json:"telefone"`
+	}
+	if err := c.BodyParser(&in); err != nil || in.Nome == "" || in.Telefone == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "nome e telefone são obrigatórios"})
+	}
+	t, err := h.svc.repo.CreateFieldTech(c.Context(), in.Nome, in.Telefone)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(t)
+}
+
+func (h *Handler) deleteTech(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if err := h.svc.repo.DeleteFieldTech(c.Context(), int64(id)); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *Handler) setPrioridade(c *fiber.Ctx) error {

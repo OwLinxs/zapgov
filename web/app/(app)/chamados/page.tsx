@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/shell/Topbar";
 import {
-  Avatar, Button, Drawer, Field, Icon, Input, Modal, useToast,
+  Avatar, Button, Drawer, Dropdown, Field, Icon, Input, Modal, useToast,
 } from "@/components/ui";
 import {
   listTickets, getTicketMetrics, getTicket, createTicket, setTicketStatus,
   setTicketPrioridade, commentTicket,
-  type ApiTicket, type ApiTicketComment, type ApiTicketMetrics,
+  listFieldTechs, createFieldTech, deleteFieldTech, dispatchTicket,
+  type ApiTicket, type ApiTicketComment, type ApiTicketMetrics, type ApiFieldTech,
 } from "@/lib/api";
 
 // Colunas do Kanban (status ativos; cancelado fica fora da visão principal).
@@ -53,6 +54,7 @@ export default function ChamadosPage() {
   const [prioFiltro, setPrioFiltro] = useState("");
   const [novoOpen, setNovoOpen] = useState(false);
   const [abertoId, setAbertoId] = useState<number | null>(null);
+  const [techsOpen, setTechsOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -95,6 +97,7 @@ export default function ChamadosPage() {
                 <option key={k} value={k}>{v.label}</option>
               ))}
             </select>
+            <Button variant="secondary" icon="users" onClick={() => setTechsOpen(true)}>Técnicos</Button>
             <Button variant="secondary" icon="refresh" onClick={load}>Atualizar</Button>
             <Button variant="primary" icon="plus" onClick={() => setNovoOpen(true)}>Novo chamado</Button>
           </>
@@ -163,6 +166,7 @@ export default function ChamadosPage() {
       </div>
 
       <NovoChamadoModal open={novoOpen} onClose={() => setNovoOpen(false)} onCriado={() => { setNovoOpen(false); load(); }} />
+      <TecnicosModal open={techsOpen} onClose={() => setTechsOpen(false)} />
       {abertoId != null && (
         <DetalheDrawer id={abertoId} onClose={() => setAbertoId(null)} onMudou={load} />
       )}
@@ -263,6 +267,7 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
   const [coment, setComent] = useState("");
   const [interno, setInterno] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [techs, setTechs] = useState<ApiFieldTech[]>([]);
 
   const carregar = useCallback(async () => {
     try {
@@ -273,6 +278,18 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
   }, [id]);
 
   useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => { listFieldTechs().then(setTechs).catch(() => setTechs([])); }, []);
+
+  async function encaminhar(tech: ApiFieldTech) {
+    setBusy(true);
+    try {
+      await dispatchTicket(id, tech.id);
+      await carregar(); onMudou();
+      toast({ type: "success", title: "Ordem enviada", message: `Chamado encaminhado para ${tech.nome} no WhatsApp.` });
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+    } finally { setBusy(false); }
+  }
 
   async function mudarStatus(status: string) {
     setBusy(true);
@@ -340,12 +357,34 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
           <Linha k="Aberto em" v={fmtData(ticket.criado_em)} />
         </div>
 
-        {/* Atendimento é pelo chat: abre a conversa no inbox. */}
-        {ticket.conversation_id && (
-          <Button variant="wa" size="sm" icon="message" onClick={() => router.push(`/inbox?conv=${ticket.conversation_id}`)}>
-            Atender no chat (WhatsApp)
-          </Button>
-        )}
+        {/* Atendimento é pelo chat; ou encaminha a ordem pro técnico de campo. */}
+        <div className="row center wrap" style={{ gap: 8 }}>
+          {ticket.conversation_id && (
+            <Button variant="wa" size="sm" icon="message" onClick={() => router.push(`/inbox?conv=${ticket.conversation_id}`)}>
+              Atender no chat
+            </Button>
+          )}
+          {ticket.status !== "resolvido" && ticket.status !== "cancelado" && (
+            <Dropdown
+              trigger={
+                <button className="btn btn-secondary btn-sm" aria-disabled={busy}>
+                  <Icon name="send" size={14} /> Encaminhar p/ técnico
+                </button>
+              }
+            >
+              <div className="dropdown-label">Técnicos de campo</div>
+              {techs.length === 0 ? (
+                <div className="dropdown-item muted">Nenhum cadastrado (botão “Técnicos”)</div>
+              ) : (
+                techs.map((t) => (
+                  <div key={t.id} className="dropdown-item" onClick={() => encaminhar(t)}>
+                    <Icon name="user" size={15} /> {t.nome}
+                  </div>
+                ))
+              )}
+            </Dropdown>
+          )}
+        </div>
 
         {/* Gestão leve (atender é pelo chat): prioridade, cancelar. */}
         <div className="row center wrap" style={{ gap: 8, alignItems: "flex-end" }}>
@@ -391,6 +430,67 @@ function DetalheDrawer({ id, onClose, onMudou }: { id: number; onClose: () => vo
         </div>
       </div>
     </Drawer>
+  );
+}
+
+function TecnicosModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const toast = useToast();
+  const [techs, setTechs] = useState<ApiFieldTech[]>([]);
+  const [nome, setNome] = useState("");
+  const [fone, setFone] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => { listFieldTechs().then(setTechs).catch(() => setTechs([])); }, []);
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  async function add() {
+    if (!nome.trim() || !fone.trim()) return;
+    setBusy(true);
+    try {
+      await createFieldTech(nome, fone);
+      setNome(""); setFone(""); load();
+    } catch (e) {
+      toast({ type: "error", title: "Erro", message: (e as Error).message });
+    } finally { setBusy(false); }
+  }
+  async function remover(id: number) {
+    try { await deleteFieldTech(id); load(); } catch { /* ignore */ }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} width={520}>
+      <div className="modal-head">
+        <div className="modal-title">Técnicos de campo</div>
+        <div className="modal-sub">Contatos de WhatsApp que recebem as ordens de serviço.</div>
+      </div>
+      <div className="modal-body col" style={{ gap: 12, maxHeight: "60vh", overflowY: "auto" }}>
+        <div className="row" style={{ gap: 8, alignItems: "flex-end" }}>
+          <Field label="Nome"><Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: João" /></Field>
+          <Field label="WhatsApp"><Input value={fone} onChange={(e) => setFone(e.target.value)} placeholder="46 99999-9999" /></Field>
+          <Button variant="primary" icon="plus" aria-disabled={busy || !nome.trim() || !fone.trim()} onClick={add}>Adicionar</Button>
+        </div>
+        {techs.length === 0 ? (
+          <div className="muted" style={{ fontSize: 12.5, padding: 8 }}>Nenhum técnico cadastrado.</div>
+        ) : (
+          <div className="col" style={{ gap: 6 }}>
+            {techs.map((t) => (
+              <div key={t.id} className="row between center" style={{ padding: "8px 10px", borderRadius: 8, background: "var(--bg-sunken)" }}>
+                <div className="row center" style={{ gap: 9 }}>
+                  <Avatar name={t.nome} size={26} />
+                  <div className="col" style={{ gap: 0 }}>
+                    <span className="strong" style={{ fontSize: 13 }}>{t.nome}</span>
+                    <span className="mono faint" style={{ fontSize: 11 }}>{t.telefone}</span>
+                  </div>
+                </div>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => remover(t.id)} title="Remover">
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

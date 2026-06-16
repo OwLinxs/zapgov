@@ -18,6 +18,10 @@ type Service struct {
 	// Desacoplados do pacote messaging via callback (mesmo padrão do projeto).
 	OnAssigned func(ctx context.Context, t *Ticket)
 	OnResolved func(ctx context.Context, t *Ticket)
+
+	// OnDispatch, se definido, envia a ordem de serviço no WhatsApp do técnico de
+	// campo (fone) ao encaminhar um chamado.
+	OnDispatch func(ctx context.Context, fone, texto string, t *Ticket)
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
