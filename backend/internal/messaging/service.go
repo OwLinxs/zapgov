@@ -602,8 +602,10 @@ func (s *Service) ConversationIDByPhone(ctx context.Context, phone string) (int6
 	return s.repo.IDByPhone(ctx, phone)
 }
 
-// ConversationMessages devolve as mensagens de uma conversa e a marca como lida.
-func (s *Service) ConversationMessages(ctx context.Context, convID int64, limit int) ([]Message, error) {
+// ConversationMessages devolve as mensagens de uma conversa. marcarLida=false
+// (ex.: atualização em segundo plano com a janela sem foco) mantém o contador de
+// não-lidas — assim o atendente não "perde" a mensagem por deixar o chat aberto.
+func (s *Service) ConversationMessages(ctx context.Context, convID int64, limit int, marcarLida bool) ([]Message, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
@@ -611,8 +613,8 @@ func (s *Service) ConversationMessages(ctx context.Context, convID int64, limit 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.MarkRead(ctx, convID); err != nil {
-		return msgs, nil // leitura é best-effort; não falha o GET
+	if marcarLida {
+		_ = s.repo.MarkRead(ctx, convID) // leitura é best-effort; não falha o GET
 	}
 	return msgs, nil
 }

@@ -643,9 +643,11 @@ export default function InboxPage() {
     }
   }, []);
 
-  const loadMsgs = useCallback(async (id: number) => {
+  // marcarLida=false (atualização em segundo plano sem foco) preserva o contador
+  // de não-lidas — o atendente não perde a mensagem por deixar o chat aberto.
+  const loadMsgs = useCallback(async (id: number, marcarLida = true) => {
     try {
-      setMsgs(await listConversationMessages(id));
+      setMsgs(await listConversationMessages(id, marcarLida));
     } catch {
       /* silencioso no polling */
     }
@@ -669,7 +671,8 @@ export default function InboxPage() {
     loadConvs();
     const aid = activeIdRef.current;
     if (aid && (!lastEvent.conversation_id || lastEvent.conversation_id === aid)) {
-      loadMsgs(aid);
+      // Janela sem foco → atualiza o chat MAS não marca como lida (mantém o aviso).
+      loadMsgs(aid, typeof document !== "undefined" && document.hasFocus());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastEvent]);
@@ -1121,6 +1124,13 @@ export default function InboxPage() {
               <Button variant="ghost" size="sm" icon="history" onClick={abrirHistorico}>
                 Histórico
               </Button>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                title="Fechar conversa (volta a contar mensagens não lidas)"
+                onClick={() => setActiveId(null)}
+              >
+                <Icon name="x" size={16} />
+              </button>
               <Dropdown
                 trigger={
                   <button className="btn btn-ghost btn-icon btn-sm" title="Etiquetas">

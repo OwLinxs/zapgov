@@ -219,8 +219,10 @@ export async function resolveBulk(ids: number[]): Promise<number> {
   return r.resolvidas;
 }
 
-export async function listConversationMessages(id: number): Promise<ApiMessage[]> {
-  const data = await get<{ messages: ApiMessage[] }>(`/conversations/${id}/messages`);
+// marcarLida=false não zera o contador de não-lidas (atualização em 2º plano).
+export async function listConversationMessages(id: number, marcarLida = true): Promise<ApiMessage[]> {
+  const suffix = marcarLida ? "" : "?read=0";
+  const data = await get<{ messages: ApiMessage[] }>(`/conversations/${id}/messages${suffix}`);
   return data.messages ?? [];
 }
 

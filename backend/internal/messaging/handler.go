@@ -538,7 +538,9 @@ func (h *Handler) conversationMessages(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
-	msgs, err := h.svc.ConversationMessages(c.Context(), int64(id), c.QueryInt("limit", 200))
+	// read=0 não marca como lida (atualização em segundo plano sem foco).
+	marcarLida := c.QueryInt("read", 1) != 0
+	msgs, err := h.svc.ConversationMessages(c.Context(), int64(id), c.QueryInt("limit", 200), marcarLida)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
