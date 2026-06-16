@@ -772,6 +772,38 @@ export const assignTicket = (id: number, tecnico?: string) => post<ApiTicket>(`/
 export const commentTicket = (id: number, body: string, interno = false) =>
   post<ApiTicketComment>(`/tickets/${id}/comment`, { body, interno });
 
+// ---- Base de conhecimento (KB) ----
+export interface ApiKbArticle {
+  id: number;
+  titulo: string;
+  problema: string;
+  solucao: string;
+  categoria: string;
+  tags: string[] | null;
+  autor: string;
+  ticket_id: number | null;
+  status: string;
+  views: number;
+  uteis: number;
+  criado_em: string;
+  atualizado_em: string;
+}
+export async function listKb(f?: { q?: string; categoria?: string }): Promise<ApiKbArticle[]> {
+  const qs = new URLSearchParams();
+  if (f?.q) qs.set("q", f.q);
+  if (f?.categoria) qs.set("categoria", f.categoria);
+  const suffix = qs.toString() ? "?" + qs.toString() : "";
+  return (await get<{ articles: ApiKbArticle[] }>("/kb" + suffix)).articles ?? [];
+}
+export const listKbCategorias = async () => (await get<{ categorias: string[] }>("/kb/categorias")).categorias ?? [];
+export const getKbArticle = (id: number) => get<ApiKbArticle>(`/kb/${id}`);
+export const createKbArticle = (a: { titulo: string; problema?: string; solucao?: string; categoria?: string; tags?: string[]; ticket_id?: number }) =>
+  post<ApiKbArticle>("/kb", a);
+export const updateKbArticle = (id: number, a: { titulo: string; problema?: string; solucao?: string; categoria?: string; tags?: string[] }) =>
+  post<ApiKbArticle>(`/kb/${id}`, a, "PUT");
+export const arquivaKbArticle = (id: number) => del(`/kb/${id}`);
+export const votaKbArticle = (id: number) => post(`/kb/${id}/util`, {});
+
 // ---- Auditoria ----
 export interface ApiAudit {
   id: number;

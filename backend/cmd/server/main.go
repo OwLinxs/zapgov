@@ -25,6 +25,7 @@ import (
 	"zapgov/backend/internal/database"
 	"zapgov/backend/internal/departments"
 	"zapgov/backend/internal/flow"
+	"zapgov/backend/internal/kb"
 	"zapgov/backend/internal/labels"
 	"zapgov/backend/internal/messaging"
 	"zapgov/backend/internal/messaging/whatsapp"
@@ -282,6 +283,8 @@ func main() {
 			[]string{fmt.Sprintf("%d", t.Numero)})
 	}
 	tickets.NewHandler(ticketsSvc).Register(api)
+	// Base de conhecimento (T.I.): leitura aberta, gestão p/ admin/supervisor.
+	kb.NewHandler(kb.NewRepository(pool)).Register(api, opsOnly)
 	// Atendimento pelo chat: quando a conversa é assumida/resolvida/transferida,
 	// espelha o status no chamado ligado (kanban reflete o que acontece no inbox).
 	svc.OnConversationStatus = func(ctx context.Context, convID int64, status, atendente string) {
