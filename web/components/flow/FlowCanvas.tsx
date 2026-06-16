@@ -15,7 +15,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { Button, Icon, Field, Input, useToast } from "@/components/ui";
 import { nodeTypes, NODE_META } from "./nodes";
-import { getActiveFlow, saveFlowGraph, listDepartments, type FlowGraph, type ApiDepartment } from "@/lib/api";
+import { getActiveFlow, saveFlowGraph, createFlow, listDepartments, type FlowGraph, type ApiDepartment, type Flow } from "@/lib/api";
 
 let seq = 0;
 const newId = (type: string) => `${type}_${Date.now()}_${seq++}`;
@@ -35,35 +35,39 @@ export default function FlowCanvas() {
   const [deps, setDeps] = useState<ApiDepartment[]>([]);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [semFluxo, setSemFluxo] = useState(false); // tenant ainda não tem fluxo
+  const [criando, setCriando] = useState(false);
+
+  // Aplica um fluxo carregado ao canvas.
+  const aplicarFluxo = useCallback((fl: Flow) => {
+    setSemFluxo(false);
+    setErro(null);
+    setFlowId(fl.id);
+    setNodes(fl.graph.nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })));
+    setEdges(fl.graph.edges.map((e) => ({ id: edgeId(e), source: e.source, sourceHandle: e.sourceHandle ?? undefined, target: e.target })));
+  }, [setNodes, setEdges]);
 
   useEffect(() => {
     getActiveFlow()
       .then((fl) => {
-        if (!fl) {
-          setErro("Nenhum fluxo ativo encontrado.");
-          return;
-        }
-        setFlowId(fl.id);
-        setNodes(
-          fl.graph.nodes.map((n) => ({
-            id: n.id,
-            type: n.type,
-            position: n.position,
-            data: n.data,
-          })),
-        );
-        setEdges(
-          fl.graph.edges.map((e) => ({
-            id: edgeId(e),
-            source: e.source,
-            sourceHandle: e.sourceHandle ?? undefined,
-            target: e.target,
-          })),
-        );
+        if (!fl) { setSemFluxo(true); return; }
+        aplicarFluxo(fl);
       })
       .catch((e) => setErro((e as Error).message));
     listDepartments().then(setDeps).catch(() => {});
-  }, [setNodes, setEdges]);
+  }, [aplicarFluxo]);
+
+  // Cria o primeiro fluxo do tenant (órgão recém-provisionado, ex.: T.I.).
+  const criarFluxo = async () => {
+    setCriando(true);
+    try {
+      aplicarFluxo(await createFlow("Fluxo de atendimento"));
+    } catch (e) {
+      toast({ type: "error", title: "Erro ao criar fluxo", message: (e as Error).message });
+    } finally {
+      setCriando(false);
+    }
+  };
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, id: edgeId(c as any) }, eds)),
@@ -114,6 +118,21 @@ export default function FlowCanvas() {
   };
 
   const selected = nodes.find((n) => n.id === selId) || null;
+
+  if (semFluxo) {
+    return (
+      <div className="empty-state" style={{ height: "100%" }}>
+        <div className="empty-ico">
+          <Icon name="message" size={24} />
+        </div>
+        <div className="strong">Este painel ainda não tem um fluxo</div>
+        <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>Crie o fluxo do chatbot para começar a montar.</div>
+        <Button variant="primary" icon="plus" style={{ marginTop: 14 }} aria-disabled={criando} onClick={criarFluxo}>
+          {criando ? "Criando…" : "Criar fluxo"}
+        </Button>
+      </div>
+    );
+  }
 
   if (erro) {
     return (

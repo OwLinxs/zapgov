@@ -111,3 +111,22 @@ func (r *Repository) SaveGraph(ctx context.Context, id int64, graph json.RawMess
 	_, err := r.pool.Exec(ctx, `UPDATE flows SET graph = $2 WHERE id = $1 AND tenant_id = $3`, id, graph, tenantctx.From(ctx))
 	return err
 }
+
+// Create cria um fluxo ativo do zero (com um bloco start) para o tenant — usado
+// quando o tenant ainda não tem fluxo (ex.: órgão recém-provisionado).
+func (r *Repository) Create(ctx context.Context, nome string) (*Flow, error) {
+	if nome == "" {
+		nome = "Novo fluxo"
+	}
+	var f Flow
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO flows (tenant_id, nome, ativo, graph)
+		VALUES ($1, $2, true, '{"nodes":[{"id":"start","type":"start","position":{"x":300,"y":0},"data":{}}],"edges":[]}')
+		RETURNING id, nome, graph, ativo`,
+		tenantctx.From(ctx), nome).
+		Scan(&f.ID, &f.Nome, &f.Graph, &f.Ativo)
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}

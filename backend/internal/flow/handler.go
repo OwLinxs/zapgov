@@ -14,7 +14,20 @@ func NewHandler(repo *Repository) *Handler { return &Handler{repo: repo} }
 func (h *Handler) Register(r fiber.Router, admin fiber.Handler) {
 	r.Get("/flows", h.list)
 	r.Get("/flow", h.active) // fluxo ativo (para o canvas)
+	r.Post("/flows", admin, h.create)
 	r.Put("/flows/:id", admin, h.saveGraph)
+}
+
+func (h *Handler) create(c *fiber.Ctx) error {
+	var body struct {
+		Nome string `json:"nome"`
+	}
+	_ = c.BodyParser(&body)
+	f, err := h.repo.Create(c.Context(), body.Nome)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(f)
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {

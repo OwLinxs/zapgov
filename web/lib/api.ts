@@ -480,6 +480,9 @@ export async function saveFlowGraph(id: number, graph: FlowGraph): Promise<void>
   await post(`/flows/${id}`, { graph }, "PUT");
 }
 
+// Cria um fluxo ativo do zero (tenant sem fluxo ainda).
+export const createFlow = (nome: string) => post<Flow>("/flows", { nome });
+
 // ---- Configurações (single-tenant) ----
 export interface SettingsOrg {
   nome: string;
