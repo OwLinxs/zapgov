@@ -115,8 +115,11 @@ func (s *Service) Dispatch(ctx context.Context, ticketID, techID int64, texto st
 	if texto == "" {
 		texto = ordemServico(t)
 	}
+	// Só atribui se a ordem REALMENTE saiu (senão o operador acharia que enviou).
 	if s.OnDispatch != nil {
-		s.OnDispatch(ctx, tech.Telefone, texto, t)
+		if err := s.OnDispatch(ctx, tech.Telefone, texto, t); err != nil {
+			return nil, err
+		}
 	}
 	// Atribui ao técnico e marca em andamento (silencioso — sem notificar o
 	// solicitante aqui; o aviso a ele segue pelo chat).

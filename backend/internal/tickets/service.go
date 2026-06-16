@@ -20,8 +20,9 @@ type Service struct {
 	OnResolved func(ctx context.Context, t *Ticket)
 
 	// OnDispatch, se definido, envia a ordem de serviço no WhatsApp do técnico de
-	// campo (fone) ao encaminhar um chamado.
-	OnDispatch func(ctx context.Context, fone, texto string, t *Ticket)
+	// campo (fone). Retorna erro se não conseguiu entregar (ex.: janela fechada) —
+	// aí o encaminhamento falha em vez de fingir que enviou.
+	OnDispatch func(ctx context.Context, fone, texto string, t *Ticket) error
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }

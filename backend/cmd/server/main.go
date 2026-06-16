@@ -285,15 +285,18 @@ func main() {
 	}
 	// Despacho: envia a ordem de serviço no WhatsApp do técnico de campo COM um
 	// botão "Finalizar #N" cuja chave carrega o id do chamado (fechar_<id>) — assim
-	// o técnico, mesmo com vários chamados, fecha o certo. Janela aberta → botão
-	// interativo; fechada → template (sem botão).
-	ticketsSvc.OnDispatch = func(ctx context.Context, fone, texto string, t *tickets.Ticket) {
+	// o técnico, mesmo com vários chamados, fecha o certo. Exige a janela de 24h
+	// aberta (mensagem interativa); fechada → falha com aviso claro (sem template,
+	// que iria sem botão e não resolveria a finalização).
+	ticketsSvc.OnDispatch = func(ctx context.Context, fone, texto string, t *tickets.Ticket) error {
 		opts := []messaging.MenuOption{{Key: fmt.Sprintf("fechar_%d", t.ID), Label: fmt.Sprintf("✅ Finalizar #%d", t.Numero)}}
-		if _, err := svc.SendMenu(ctx, fone, texto, opts); err == nil {
-			return
+		if _, err := svc.SendMenu(ctx, fone, texto, opts); err != nil {
+			if errors.Is(err, messaging.ErrWindowClosed) {
+				return fmt.Errorf("a janela de 24h do técnico está fechada — peça para ele mandar uma mensagem ao número do T.I. e tente de novo")
+			}
+			return fmt.Errorf("falha ao enviar ao técnico: %w", err)
 		}
-		notificarChamado(ctx, fone, texto, "despacho_chamado",
-			[]string{fmt.Sprintf("%d", t.Numero), firstNonEmpty(t.Local, t.Secretaria, "—"), t.Titulo})
+		return nil
 	}
 	// Técnico tocou "Finalizar #N": fecha o chamado identificado pela chave do
 	// botão e confirma. O fechamento notifica o solicitante (OnResolved).
