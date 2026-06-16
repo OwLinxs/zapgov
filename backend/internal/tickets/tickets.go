@@ -161,7 +161,9 @@ func (r *Repository) SetStatus(ctx context.Context, id int64, status string) (*T
 func (r *Repository) Assign(ctx context.Context, id int64, tecnico string) (*Ticket, error) {
 	rows, err := r.pool.Query(ctx, `
 		UPDATE tickets SET tecnico = $3, atribuido_em = COALESCE(atribuido_em, now()),
-			status = CASE WHEN status = 'aberto' THEN 'em_andamento' ELSE status END
+			-- assumir = começar a atender: promove de aberto/aguardando para
+			-- em_andamento (resolvido/cancelado não mudam).
+			status = CASE WHEN status IN ('aberto','aguardando') THEN 'em_andamento' ELSE status END
 		WHERE id = $1 AND tenant_id = $2
 		RETURNING `+cols,
 		id, tenantctx.From(ctx), tecnico)
