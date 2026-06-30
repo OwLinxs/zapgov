@@ -196,7 +196,7 @@ func (h *Handler) sendMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
 	// Respondeu uma conversa da fila → assume automaticamente.
-	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
+	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c)) // responder assume a conversa
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
@@ -285,7 +285,7 @@ func (h *Handler) sendMedia(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
-	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
+	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c)) // responder assume a conversa
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
@@ -336,7 +336,7 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
-	_ = h.svc.ClaimIfQueued(c.Context(), msg.ConversationID, operador(c))
+	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c)) // responder assume a conversa
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)

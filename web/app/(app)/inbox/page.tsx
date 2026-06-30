@@ -597,6 +597,7 @@ export default function InboxPage() {
   const [erro, setErro] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true); // auto-scroll só quando o usuário está no fim do chat
+  const [colisao, setColisao] = useState<string | null>(null); // outro atendente na conversa
   const taRef = useRef<HTMLTextAreaElement>(null); // campo de mensagem (auto-resize)
   const [artigosRel, setArtigosRel] = useState<ApiKbArticle[]>([]); // KB: sugestão ao atender chamado
 
@@ -934,8 +935,14 @@ export default function InboxPage() {
     }
   }
 
-  async function enviar() {
+  async function enviar(force = false) {
     if (!draft.trim() || !active) return;
+    // Colisão: conversa em atendimento por OUTRO atendente. Avisa antes de mandar.
+    const outroAtende = !notaMode && active.status === "em_atendimento" && !!active.atendente && active.atendente !== (user?.nome ?? "");
+    if (outroAtende && !force) {
+      setColisao(active.atendente);
+      return;
+    }
     const texto = draft;
     setDraft("");
     setSending(true);
@@ -1081,6 +1088,17 @@ export default function InboxPage() {
                     {c.setor && (
                       <span className="mono faint" style={{ fontSize: 10.5 }}>
                         {c.setor}
+                      </span>
+                    )}
+                    {/* Quem está atendendo (D): bate o olho e vê de quem é a conversa. */}
+                    {c.status === "em_atendimento" && c.atendente && (
+                      <span
+                        className="row center"
+                        style={{ gap: 4, fontSize: 10.5, fontWeight: 600, color: c.atendente === (user?.nome ?? "") ? "var(--wa)" : "var(--text-tertiary)" }}
+                        title={"Em atendimento por " + c.atendente}
+                      >
+                        <Avatar name={c.atendente} size={14} />
+                        {c.atendente === (user?.nome ?? "") ? "você" : c.atendente.split(" ")[0]}
                       </span>
                     )}
                   </div>
@@ -1413,7 +1431,7 @@ export default function InboxPage() {
                       <Icon name="mic" size={18} />
                     </button>
                   )}
-                  <Button variant={notaMode ? "secondary" : "wa"} style={{ height: 42, width: 42, padding: 0 }} aria-disabled={sending} onClick={enviar}>
+                  <Button variant={notaMode ? "secondary" : "wa"} style={{ height: 42, width: 42, padding: 0 }} aria-disabled={sending} onClick={() => enviar()}>
                     <Icon name={notaMode ? "edit" : "send"} size={18} />
                   </Button>
                 </div>
@@ -1466,6 +1484,17 @@ export default function InboxPage() {
         title={`Finalizar ${ativasFiltradas.length} conversas?`}
         message="Todas as conversas ativas do filtro atual serão marcadas como resolvidas. Esta ação não pode ser desfeita."
         confirmLabel="Finalizar todas"
+      />
+
+      {/* Colisão: avisa antes de responder uma conversa de outro atendente. */}
+      <ConfirmModal
+        open={colisao != null}
+        onClose={() => setColisao(null)}
+        onConfirm={() => { setColisao(null); enviar(true); }}
+        icon="reply"
+        title="Conversa em atendimento"
+        message={`Esta conversa está sendo atendida por ${colisao}. Ao enviar, ela passa para você.`}
+        confirmLabel="Assumir e enviar"
       />
 
       {/* Histórico por sessão de atendimento */}
