@@ -100,7 +100,7 @@ export default function AuditoriaPage() {
                 <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
               </div>
               <div className="grow" style={{ minWidth: 220 }}>
-                <Input icon="search" placeholder="Buscar por usuário, ação (rota) ou IP…" value={q} onChange={(e) => setQ(e.target.value)} />
+                <Input icon="search" placeholder="Buscar por usuário, contato/número, ação ou IP…" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
             </div>
           </div>

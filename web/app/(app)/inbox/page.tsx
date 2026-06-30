@@ -596,6 +596,7 @@ export default function InboxPage() {
   const [midiaOpen, setMidiaOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true); // auto-scroll só quando o usuário está no fim do chat
   const taRef = useRef<HTMLTextAreaElement>(null); // campo de mensagem (auto-resize)
   const [artigosRel, setArtigosRel] = useState<ApiKbArticle[]>([]); // KB: sugestão ao atender chamado
 
@@ -846,6 +847,7 @@ export default function InboxPage() {
   useEffect(() => {
     if (activeId == null) return;
     setReplyTo(null); // trocar de conversa descarta a citação pendente
+    stickRef.current = true; // ao abrir a conversa, começa no fim
     // Se a conversa é um chamado, sugere artigos da base relacionados (atender).
     setArtigosRel([]);
     getTicketByConversation(activeId)
@@ -860,7 +862,8 @@ export default function InboxPage() {
   }, [activeId, loadMsgs]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // Só rola pro fim se o usuário já estava lá — senão respeita a leitura do histórico.
+    if (stickRef.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs]);
 
   // Ajusta a altura do campo de mensagem ao conteúdo (cresce até um limite, depois rola).
@@ -1259,7 +1262,15 @@ export default function InboxPage() {
             </div>
           )}
 
-          <div ref={scrollRef} className="wa-canvas scroll-y grow" style={{ borderRadius: 0, margin: 0 }}>
+          <div
+            ref={scrollRef}
+            className="wa-canvas scroll-y grow"
+            style={{ borderRadius: 0, margin: 0 }}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+            }}
+          >
             {msgs.length === 0 ? (
               <div className="muted" style={{ textAlign: "center", padding: 24, fontSize: 12.5 }}>
                 Sem mensagens ainda.

@@ -58,7 +58,12 @@ func (r *Repository) List(ctx context.Context, f Filter) ([]Entry, error) {
 		  AND ($2 = 0 OR user_id = $2)
 		  AND ($3 = '' OR criado_em >= $3::date)
 		  AND ($4 = '' OR criado_em < ($4::date + 1))
-		  AND ($5 = '' OR rota ILIKE '%'||$5||'%' OR user_nome ILIKE '%'||$5||'%' OR ip ILIKE '%'||$5||'%')
+		  AND ($5 = '' OR rota ILIKE '%'||$5||'%' OR user_nome ILIKE '%'||$5||'%' OR ip ILIKE '%'||$5||'%'
+		       -- busca por contato: casa ações em conversas cujo telefone/nome bate o termo
+		       OR EXISTS (SELECT 1 FROM conversations c
+		                  WHERE c.tenant_id = audit_log.tenant_id
+		                    AND (c.contact_phone ILIKE '%'||$5||'%' OR c.contact_name ILIKE '%'||$5||'%')
+		                    AND audit_log.rota LIKE '/conversations/'||c.id||'/%'))
 		ORDER BY criado_em DESC LIMIT $6`,
 		tenantctx.From(ctx), f.UserID, f.From, f.To, f.Q, f.Limit)
 	if err != nil {
