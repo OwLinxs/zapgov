@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { WaBubble, Icon } from "@/components/ui";
 import { fetchMediaBlob, mapStatus, hhmm, type ApiMessage } from "@/lib/api";
 
-const EMOJIS = ["👍", "👎", "❤️", "😂", "😮", "😢", "🙏", "😊", "👏", "🎉", "✅", "❌", "🔥", "💯", "😍", "🤝", "😡", "🤔"];
+const EMOJIS = ["👍", "👎", "❤️", "😂", "😉", "😮", "😢", "🙏", "😊", "👏", "🎉", "✅", "❌", "🔥", "💯", "😍", "🤝", "😡", "🤔"];
 
 // ReactionWrap envolve a bolha: badge da reação atual + ações no hover
 // (reagir só em mensagens do cidadão; responder em qualquer mensagem real).
