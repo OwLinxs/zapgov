@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { WaBubble, Icon } from "@/components/ui";
 import { fetchMediaBlob, mapStatus, hhmm, type ApiMessage } from "@/lib/api";
 
-const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const EMOJIS = ["👍", "👎", "❤️", "😂", "😮", "😢", "🙏", "😊", "👏", "🎉", "✅", "❌", "🔥", "💯", "😍", "🤝", "😡", "🤔"];
 
 // ReactionWrap envolve a bolha: badge da reação atual + ações no hover
 // (reagir só em mensagens do cidadão; responder em qualquer mensagem real).
@@ -61,16 +61,16 @@ function ReactionWrap({ m, onReact, onReply, children }: { m: ApiMessage; onReac
           )}
           {podeReagir && open && (
             <div
-              className="row center"
+              className="row wrap"
               style={{
-                gap: 2, background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)",
-                borderRadius: 99, padding: "3px 6px", boxShadow: "0 4px 14px rgba(0,0,0,.18)",
+                gap: 2, width: 216, background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)",
+                borderRadius: 12, padding: "6px 8px", boxShadow: "0 4px 14px rgba(0,0,0,.18)",
               }}
             >
               {EMOJIS.map((e) => (
                 <span
                   key={e}
-                  style={{ fontSize: 17, cursor: "pointer", padding: "0 3px" }}
+                  style={{ fontSize: 18, cursor: "pointer", padding: "2px 4px", lineHeight: 1.2 }}
                   onClick={() => { onReact!(m.wa_message_id, e); setOpen(false); }}
                 >
                   {e}
