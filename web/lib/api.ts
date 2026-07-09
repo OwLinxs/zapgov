@@ -373,16 +373,9 @@ export async function createCampaign(input: {
   recipients?: CampaignRecipient[]; // modo personalizado
   scheduled_at?: string; // RFC3339; ausente = agora
 }): Promise<ApiCampaign> {
-  const res = await fetch(BASE + "/campaigns", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-  return res.json();
+  // Usa o helper post() que injeta o token (fetch manual antes não mandava o
+  // Authorization → 401 no disparo).
+  return post<ApiCampaign>("/campaigns", input);
 }
 
 // ---- Departamentos ----
