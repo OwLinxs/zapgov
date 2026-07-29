@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { clearSession, getToken, type AuthUser } from "@/lib/api";
+import { authMe, clearSession, getToken, type AuthUser } from "@/lib/api";
 
 interface AuthState {
   user: AuthUser | null;
@@ -30,6 +30,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("zg-user", JSON.stringify(u));
     setUser(u);
   };
+
+  // Revalida a sessão ao abrir o app: traz módulos/papel atualizados sem relogar
+  // (ex.: superadmin ligou/desligou um módulo do órgão).
+  useEffect(() => {
+    if (!getToken()) return;
+    authMe()
+      .then((u) => {
+        localStorage.setItem("zg-user", JSON.stringify(u));
+        setUser(u);
+      })
+      .catch(() => { /* token inválido → AuthGate cuida do redirect */ });
+  }, []);
 
   const logout = () => {
     clearSession();

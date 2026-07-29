@@ -4,9 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "@/components/shell/Topbar";
 import { Button, Dropdown, Field, Icon, Input, Modal, Skel, useToast } from "@/components/ui";
 import {
-  listTenants, createTenant, updateTenantPlano, setTenantMeta, suspendTenant, activateTenant,
+  listTenants, createTenant, updateTenantPlano, updateTenantModulos, setTenantMeta, suspendTenant, activateTenant,
   type ApiTenant, type TenantMeta,
 } from "@/lib/api";
+
+// Módulos que podem ser ligados/desligados por órgão (gate do menu + rotas).
+const MODULOS: { key: string; label: string; hint: string }[] = [
+  { key: "chamados", label: "Chamados T.I.", hint: "Helpdesk interno (kanban, despacho a técnicos)" },
+  { key: "base", label: "Base de Conhecimento", hint: "Artigos de solução dos atendimentos" },
+  { key: "disparo", label: "Disparo em massa", hint: "Campanhas de template para contatos" },
+];
 
 const PLANOS = ["Gov Pro", "Business", "Enterprise"];
 const PLANO_CLS: Record<string, string> = {
@@ -22,6 +29,7 @@ export default function SuperAdminPage() {
   const [q, setQ] = useState("");
   const [novo, setNovo] = useState(false);
   const [plano, setPlano] = useState<ApiTenant | null>(null);
+  const [modulos, setModulos] = useState<ApiTenant | null>(null);
   const [meta, setMeta] = useState<ApiTenant | null>(null);
 
   const load = useCallback(async () => {
@@ -107,6 +115,7 @@ export default function SuperAdminPage() {
                       <td>
                         <Dropdown trigger={<button className="btn btn-ghost btn-icon btn-sm"><Icon name="more" size={15} /></button>}>
                           <div className="dropdown-item" onClick={() => setMeta(t)}><Icon name="phone" size={15} /> Credenciais Meta</div>
+                          <div className="dropdown-item" onClick={() => setModulos(t)}><Icon name="grid" size={15} /> Módulos</div>
                           <div className="dropdown-item" onClick={() => setPlano(t)}><Icon name="dollar" size={15} /> Plano e limite</div>
                           <div className="dropdown-sep" />
                           {t.id === 1 ? (
@@ -128,6 +137,7 @@ export default function SuperAdminPage() {
       </div>
 
       <NovoTenantModal open={novo} onClose={() => setNovo(false)} onCreated={load} />
+      <ModulosModal tenant={modulos} onClose={() => setModulos(null)} onSaved={load} />
       <PlanoModal tenant={plano} onClose={() => setPlano(null)} onSaved={load} />
       <MetaModal tenant={meta} onClose={() => setMeta(null)} onSaved={load} />
     </>
@@ -183,6 +193,52 @@ function NovoTenantModal({ open, onClose, onCreated }: { open: boolean; onClose:
       <div className="modal-foot">
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button variant="primary" icon="check" aria-disabled={saving || !f.nome || !f.subdominio} onClick={salvar}>{saving ? "Criando…" : "Criar órgão"}</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ModulosModal({ tenant, onClose, onSaved }: { tenant: ApiTenant | null; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (tenant) setSel({ ...(tenant.modulos ?? {}) }); }, [tenant]);
+
+  async function salvar() {
+    if (!tenant) return;
+    setSaving(true);
+    try {
+      await updateTenantModulos(tenant.id, sel);
+      toast({ type: "success", title: "Módulos atualizados", message: "O atendente precisa sair e entrar de novo para ver a mudança." });
+      onSaved(); onClose();
+    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={!!tenant} onClose={onClose} width={460}>
+      <div className="modal-head">
+        <div className="modal-title">Módulos do órgão</div>
+        <div className="modal-sub">{tenant?.nome} — liga/desliga funcionalidades neste painel</div>
+      </div>
+      <div className="modal-body col" style={{ gap: 10 }}>
+        {MODULOS.map((mod) => (
+          <label key={mod.key} className="card card-pad row between center" style={{ gap: 12, cursor: "pointer" }}>
+            <div className="col" style={{ gap: 2 }}>
+              <span className="strong" style={{ fontSize: 13.5 }}>{mod.label}</span>
+              <span className="faint" style={{ fontSize: 11.5 }}>{mod.hint}</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!sel[mod.key]}
+              onChange={(e) => setSel({ ...sel, [mod.key]: e.target.checked })}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="modal-foot">
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" icon="check" aria-disabled={saving} onClick={salvar}>{saving ? "Salvando…" : "Salvar"}</Button>
       </div>
     </Modal>
   );

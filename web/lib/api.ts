@@ -37,9 +37,9 @@ export interface ApiMessage {
   id: number;
   conversation_id: number;
   wa_message_id: string;
-  direction: "in" | "out" | "note";
+  direction: "in" | "out" | "note" | "evento";
   body: string;
-  status: string; // sent|delivered|read|failed|received|nota
+  status: string; // sent|delivered|read|failed|received|nota|evento
   created_at: string;
   media_type: string; // ''=texto; image|audio|video|document|sticker
   media_id: string;
@@ -122,6 +122,7 @@ export interface AuthUser {
   email: string;
   papel: Papel;
   must_change_password?: boolean;
+  modulos?: Record<string, boolean>; // módulos habilitados no tenant (gate do menu)
 }
 
 export async function changePassword(senha_atual: string, nova_senha: string): Promise<void> {
@@ -161,6 +162,9 @@ export async function login(email: string, senha: string, subdominio?: string): 
   }
   return res.json();
 }
+
+// authMe revalida a sessão e traz os dados frescos do usuário (inclui módulos).
+export const authMe = () => get<AuthUser>("/auth/me");
 
 export async function listConversations(filtros?: { setor?: string; status?: string; q?: string; limit?: number }): Promise<ApiConversation[]> {
   const qs = new URLSearchParams();
@@ -688,6 +692,7 @@ export interface ApiTenant {
   plano: string;
   limite_mensal: number;
   ativo: boolean;
+  modulos?: Record<string, boolean>;
   criado_em: string;
 }
 export interface TenantMeta {
@@ -703,6 +708,8 @@ export const createTenant = (t: { nome: string; subdominio: string; plano?: stri
   post<ApiTenant>("/admin/tenants", t);
 export const updateTenantPlano = (id: number, plano: string, limite_mensal: number) =>
   post(`/admin/tenants/${id}/plano`, { plano, limite_mensal }, "PUT");
+export const updateTenantModulos = (id: number, modulos: Record<string, boolean>) =>
+  post(`/admin/tenants/${id}/modulos`, { modulos }, "PUT");
 export const setTenantMeta = (id: number, m: TenantMeta) =>
   post(`/admin/tenants/${id}/meta`, m, "PUT");
 export const suspendTenant = (id: number) => post(`/admin/tenants/${id}/suspend`, {});

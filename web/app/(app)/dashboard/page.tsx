@@ -14,6 +14,7 @@ import {
   Avatar,
 } from "@/components/ui";
 import { SETOR_COR } from "@/lib/data";
+import { useAuth } from "@/lib/auth";
 import {
   getKpis, getVolume, getActivity, getAtendentes, getSatisfacao, getHeatmap,
   type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat, type ApiSatisfacao, type ApiHeatCell,
@@ -121,6 +122,11 @@ function HeatmapCard({ cells }: { cells: ApiHeatCell[] }) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  // Atendente não acessa o dashboard — se cair aqui por URL, volta pra caixa.
+  useEffect(() => {
+    if (user && user.papel === "atendente") router.replace("/inbox");
+  }, [user, router]);
   const [periodo, setPeriodo] = useState<"hora" | "dia">("hora");
   const [kpis, setKpis] = useState<ApiKpis | null>(null);
   const [dados, setDados] = useState<ApiVolumePoint[]>([]);

@@ -4,6 +4,7 @@ package tenants
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -17,13 +18,14 @@ import (
 var ErrNotFound = errors.New("tenant não encontrado")
 
 type Tenant struct {
-	ID           int64     `json:"id"`
-	Nome         string    `json:"nome"`
-	Subdominio   string    `json:"subdominio"`
-	Plano        string    `json:"plano"`
-	LimiteMensal int       `json:"limite_mensal"`
-	Ativo        bool      `json:"ativo"`
-	CriadoEm     time.Time `json:"criado_em"`
+	ID           int64           `json:"id"`
+	Nome         string          `json:"nome"`
+	Subdominio   string          `json:"subdominio"`
+	Plano        string          `json:"plano"`
+	LimiteMensal int             `json:"limite_mensal"`
+	Ativo        bool            `json:"ativo"`
+	Modulos      map[string]bool `json:"modulos"` // módulos habilitados (chamados/base/disparo…)
+	CriadoEm     time.Time       `json:"criado_em"`
 }
 
 // MetaCreds são as credenciais da Meta Cloud API de um tenant.
@@ -47,11 +49,18 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, provCache: map[int64]messaging.MessageProvider{}}
 }
 
-const cols = `id, nome, subdominio, plano, limite_mensal, ativo, criado_em`
+const cols = `id, nome, subdominio, plano, limite_mensal, ativo, modulos, criado_em`
 
 func scan(row pgx.CollectableRow) (Tenant, error) {
 	var t Tenant
-	err := row.Scan(&t.ID, &t.Nome, &t.Subdominio, &t.Plano, &t.LimiteMensal, &t.Ativo, &t.CriadoEm)
+	var mods []byte
+	err := row.Scan(&t.ID, &t.Nome, &t.Subdominio, &t.Plano, &t.LimiteMensal, &t.Ativo, &mods, &t.CriadoEm)
+	if err == nil && len(mods) > 0 {
+		_ = json.Unmarshal(mods, &t.Modulos)
+	}
+	if t.Modulos == nil {
+		t.Modulos = map[string]bool{}
+	}
 	return t, err
 }
 
@@ -183,5 +192,29 @@ func (r *Repository) SetCreds(ctx context.Context, id int64, m MetaCreds) error 
 	if err == nil {
 		r.invalidateProvider(id) // força reconstruir o provider com as novas creds
 	}
+	return err
+}
+
+// Modulos devolve os módulos habilitados de um tenant (mapa vazio se nenhum).
+func (r *Repository) Modulos(ctx context.Context, id int64) map[string]bool {
+	var b []byte
+	_ = r.pool.QueryRow(ctx, `SELECT modulos FROM tenants WHERE id = $1`, id).Scan(&b)
+	m := map[string]bool{}
+	if len(b) > 0 {
+		_ = json.Unmarshal(b, &m)
+	}
+	return m
+}
+
+// SetModulos regrava o conjunto de módulos habilitados de um tenant.
+func (r *Repository) SetModulos(ctx context.Context, id int64, m map[string]bool) error {
+	if m == nil {
+		m = map[string]bool{}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE tenants SET modulos = $2::jsonb WHERE id = $1`, id, b)
 	return err
 }

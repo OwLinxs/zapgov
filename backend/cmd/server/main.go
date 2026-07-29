@@ -118,6 +118,20 @@ func main() {
 	authH.SetTenantResolver(func(c *fiber.Ctx, sub string) int64 {
 		return tenantsRepo.IDBySubdomain(c.Context(), sub)
 	})
+	// Módulos por tenant: login/me devolvem os habilitados; o front usa p/ gate do menu.
+	authH.SetModulos(func(ctx context.Context, tenantID int64) map[string]bool {
+		return tenantsRepo.Modulos(ctx, tenantID)
+	})
+	// requireModulo bloqueia (403) as rotas de um módulo desligado no tenant logado.
+	// Defesa real no backend — não basta esconder o item no menu.
+	requireModulo := func(nome string) fiber.Handler {
+		return func(c *fiber.Ctx) error {
+			if !tenantsRepo.Modulos(c.Context(), tenantctx.From(c.Context()))[nome] {
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "módulo não habilitado para este painel"})
+			}
+			return c.Next()
+		}
+	}
 
 	if cfg.JWTSecret == "dev-secret-troque-em-producao" {
 		log.Printf("⚠️  ATENÇÃO: JWT_SECRET está com o valor padrão de DEV. Defina JWT_SECRET em produção!")
@@ -134,8 +148,8 @@ func main() {
 	})
 	app.Use("/auth/login", loginLimiter)
 
-	// Middlewares de papel reutilizados.
-	adminOnly := auth.RequireRole("admin")
+	// Middlewares de papel reutilizados. Config/Chatbot/Departamentos/Templates
+	// são admin+supervisor; gestão de usuários e superadmin seguem mais restritos.
 	opsOnly := auth.RequireRole("admin", "supervisor")
 
 	// ---------- Rotas PÚBLICAS (sem JWT) ----------
@@ -191,7 +205,7 @@ func main() {
 	remindersRepo := reminders.NewRepository(pool)
 	reminders.NewHandler(remindersRepo).Register(api)
 	metricsH := metrics.NewHandler(metrics.NewRepository(pool))
-	metricsH.Register(api)
+	metricsH.Register(api.Group("", opsOnly)) // dashboard: só admin/supervisor
 	metricsH.RegisterReports(api, opsOnly)
 
 	templatesClient := templates.NewClient(cfg.WhatsAppWABAID, cfg.WhatsAppToken, cfg.WhatsAppAPIVersion)
@@ -204,7 +218,7 @@ func main() {
 		return cr.WABAID, cr.Token, cr.APIVersion
 	}
 	templatesRepo := templates.NewRepository(pool)
-	templates.NewHandler(templatesClient, templatesRepo).Register(api, opsOnly, adminOnly)
+	templates.NewHandler(templatesClient, templatesRepo).Register(api, opsOnly, opsOnly)
 	// Trava de template por departamento (atendente).
 	msgHandler.TemplateAllowed = func(ctx context.Context, template, setor string) bool {
 		ok, _ := templatesRepo.Allowed(ctx, template, setor)
@@ -243,14 +257,14 @@ func main() {
 			}
 		}
 	}()
-	campaigns.NewHandler(campaignSvc).Register(api, opsOnly)
+	campaigns.NewHandler(campaignSvc).Register(api.Group("", requireModulo("disparo")), opsOnly)
 
-	departments.NewHandler(departments.NewRepository(pool)).Register(api, adminOnly)
+	departments.NewHandler(departments.NewRepository(pool)).Register(api, opsOnly)
 	labelsRepo := labels.NewRepository(pool)
 	labels.NewHandler(labelsRepo).Register(api, opsOnly) // criar/remover: admin/supervisor
 	quickreplies.NewHandler(quickreplies.NewRepository(pool)).Register(api, opsOnly)
 
-	chatbot.NewHandler(chatbot.NewService(chatbot.NewRepository(pool), svc)).Register(api, adminOnly)
+	chatbot.NewHandler(chatbot.NewService(chatbot.NewRepository(pool), svc)).Register(api, opsOnly)
 
 	// Módulo de chamados do T.I. (helpdesk). Reaproveita o envio de template do
 	// messaging.Service p/ notificar o solicitante por WhatsApp.
@@ -333,9 +347,9 @@ func main() {
 		_, _ = svc.SendText(ctx, from, fmt.Sprintf("✅ Chamado #%d finalizado. Obrigado!", t.Numero))
 		return true
 	}
-	tickets.NewHandler(ticketsSvc).Register(api, opsOnly)
+	tickets.NewHandler(ticketsSvc).Register(api.Group("", requireModulo("chamados")), opsOnly)
 	// Base de conhecimento (T.I.): leitura aberta, gestão p/ admin/supervisor.
-	kb.NewHandler(kb.NewRepository(pool)).Register(api, opsOnly)
+	kb.NewHandler(kb.NewRepository(pool)).Register(api.Group("", requireModulo("base")), opsOnly)
 	// Atendimento pelo chat: quando a conversa é assumida/resolvida/transferida,
 	// espelha o status no chamado ligado (kanban reflete o que acontece no inbox).
 	svc.OnConversationStatus = func(ctx context.Context, convID int64, status, atendente string) {
@@ -377,7 +391,7 @@ func main() {
 		}
 		return t.Numero, nil
 	}
-	flow.NewHandler(flowRepo).Register(api, adminOnly)
+	flow.NewHandler(flowRepo).Register(api, opsOnly)
 
 	settingsRepo := settings.NewRepository(pool)
 	// Assinatura do atendente no fim das mensagens (config por tenant).
@@ -469,7 +483,7 @@ func main() {
 		WABAID:        cfg.WhatsAppWABAID,
 		APIVersion:    cfg.WhatsAppAPIVersion,
 		Connected:     cfg.WhatsAppToken != "",
-	}).Register(api, adminOnly)
+	}).Register(api, opsOnly)
 
 	// Auto-resposta de ausência: avalia se agora é feriado/fim de semana (no fuso
 	// da org) e devolve a mensagem configurada.

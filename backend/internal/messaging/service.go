@@ -524,6 +524,19 @@ func (s *Service) AddNote(ctx context.Context, convID int64, autor, body string)
 	return m, err
 }
 
+// SetAuthor marca quem (atendente) enviou uma mensagem — exibido no painel.
+func (s *Service) SetAuthor(ctx context.Context, id int64, autor string) error {
+	return s.repo.SetAuthor(ctx, id, autor)
+}
+
+// AddEvent registra um evento de sistema na conversa (resolvido/assumiu/
+// transferido) — some no painel da equipe, nunca é enviado ao cidadão.
+func (s *Service) AddEvent(ctx context.Context, convID int64, texto string) {
+	if _, err := s.repo.InsertEvent(ctx, convID, texto); err == nil {
+		s.emit(ctx, convID, "message")
+	}
+}
+
 // SetSetorIfEmpty define o setor da conversa se ainda não tiver (conversa
 // iniciada pelo atendente herda o setor dele).
 func (s *Service) SetSetorIfEmpty(ctx context.Context, convID int64, setor string) error {

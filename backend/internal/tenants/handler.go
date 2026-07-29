@@ -36,6 +36,7 @@ func (h *Handler) Register(r fiber.Router, platformAdmin fiber.Handler) {
 	r.Get("/admin/tenants", platformAdmin, h.list)
 	r.Post("/admin/tenants", platformAdmin, h.create)
 	r.Put("/admin/tenants/:id/plano", platformAdmin, h.updatePlano)
+	r.Put("/admin/tenants/:id/modulos", platformAdmin, h.setModulos)
 	r.Put("/admin/tenants/:id/meta", platformAdmin, h.setCreds)
 	r.Post("/admin/tenants/:id/suspend", platformAdmin, h.suspend)
 	r.Post("/admin/tenants/:id/activate", platformAdmin, h.activate)
@@ -84,6 +85,23 @@ func (h *Handler) updatePlano(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
 	}
 	if err := h.repo.UpdatePlano(c.Context(), int64(id), body.Plano, body.Limite); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) setModulos(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	var body struct {
+		Modulos map[string]bool `json:"modulos"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	if err := h.repo.SetModulos(c.Context(), int64(id), body.Modulos); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"ok": true})

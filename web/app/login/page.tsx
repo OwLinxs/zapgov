@@ -42,7 +42,8 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      router.push("/dashboard");
+      // Atendente não tem dashboard → cai direto na caixa de entrada.
+      router.push(user.papel === "atendente" ? "/inbox" : "/dashboard");
     } catch (e) {
       setErr((e as Error).message);
       setLoading(false);
@@ -126,15 +127,17 @@ export default function LoginPage() {
         open={needChange}
         senhaAtual={senha}
         onDone={() => {
+          let papel = "";
           try {
             const raw = localStorage.getItem("zg-user");
             if (raw) {
               const u = JSON.parse(raw);
               u.must_change_password = false;
+              papel = u.papel;
               localStorage.setItem("zg-user", JSON.stringify(u));
             }
           } catch {}
-          router.push("/dashboard");
+          router.push(papel === "atendente" ? "/inbox" : "/dashboard");
         }}
       />
     </div>

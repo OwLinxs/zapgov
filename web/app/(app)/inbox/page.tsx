@@ -896,9 +896,11 @@ export default function InboxPage() {
   useEffect(() => {
     if (!buscandoServer) { setFinBusca([]); return; }
     const t = setTimeout(() => {
-      // 'ativas' = todas menos resolvidas (aba "Todas"); senão o status da aba.
-      const status = filter === "" ? "ativas" : filter;
-      listConversations({ status, q: q.trim().length >= 2 ? q.trim() : "", setor: setorFiltro, limit: 200 })
+      const temTermo = q.trim().length >= 2;
+      // Aba "Todas": ao pesquisar traz TUDO (inclui finalizadas); sem termo, só ativas.
+      // Nas demais abas, sempre o status da aba.
+      const status = filter === "" ? (temTermo ? "" : "ativas") : filter;
+      listConversations({ status, q: temTermo ? q.trim() : "", setor: setorFiltro, limit: 200 })
         .then(setFinBusca)
         .catch(() => setFinBusca([]));
     }, 350);

@@ -18,26 +18,27 @@ interface NavDef {
   icon: IconName;
   badge?: number;
   roles?: Papel[]; // ausente = todos os papéis
+  modulo?: string; // ausente = sempre visível; senão exige o módulo do tenant
 }
 
 const NAV: NavDef[] = [
-  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard", roles: ["admin", "supervisor"] },
   { href: "/inbox", label: "Caixa de Entrada", icon: "inbox" },
   { href: "/fila", label: "Fila ao Vivo", icon: "clock" },
-  { href: "/chamados", label: "Chamados T.I.", icon: "shield", roles: ["admin", "supervisor"] },
-  { href: "/base", label: "Base de Conhecimento", icon: "fileText", roles: ["admin", "supervisor"] },
-  { href: "/chatbot", label: "Chatbot", icon: "message", roles: ["admin"] },
-  { href: "/disparo", label: "Novo Disparo", icon: "send", roles: ["admin", "supervisor"] },
+  { href: "/chamados", label: "Chamados T.I.", icon: "shield", roles: ["admin", "supervisor"], modulo: "chamados" },
+  { href: "/base", label: "Base de Conhecimento", icon: "fileText", roles: ["admin", "supervisor"], modulo: "base" },
+  { href: "/chatbot", label: "Chatbot", icon: "message", roles: ["admin", "supervisor"] },
+  { href: "/disparo", label: "Novo Disparo", icon: "send", roles: ["admin", "supervisor"], modulo: "disparo" },
   { href: "/historico", label: "Histórico", icon: "history" },
   { href: "/contatos", label: "Contatos", icon: "contacts" },
   { href: "/templates", label: "Templates", icon: "template" },
 ];
 
 const NAV_FOOT: NavDef[] = [
-  { href: "/departamentos", label: "Departamentos", icon: "building", roles: ["admin"] },
+  { href: "/departamentos", label: "Departamentos", icon: "building", roles: ["admin", "supervisor"] },
   { href: "/relatorios", label: "Relatórios", icon: "download", roles: ["admin", "supervisor"] },
   { href: "/auditoria", label: "Auditoria", icon: "list", roles: ["admin", "supervisor"] },
-  { href: "/config", label: "Configurações", icon: "settings", roles: ["admin"] },
+  { href: "/config", label: "Configurações", icon: "settings", roles: ["admin", "supervisor"] },
 ];
 
 const PAPEL_LABEL: Record<Papel, string> = {
@@ -84,7 +85,8 @@ export function Sidebar() {
   };
 
   const papel = user?.papel ?? "atendente";
-  const can = (n: NavDef) => !n.roles || n.roles.includes(papel);
+  const temModulo = (m?: string) => !m || !!user?.modulos?.[m];
+  const can = (n: NavDef) => (!n.roles || n.roles.includes(papel)) && temModulo(n.modulo);
 
   const item = (n: NavDef) => {
     const active = pathname === n.href || pathname.startsWith(n.href + "/");

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -15,6 +16,8 @@ type Handler struct {
 	repo *Repository
 	// resolveTenant mapeia subdomínio -> tenant_id (padrão 1 se nil/desconhecido).
 	resolveTenant func(c *fiber.Ctx, sub string) int64
+	// modulos devolve os módulos habilitados de um tenant (vindo do pacote tenants).
+	modulos func(ctx context.Context, tenantID int64) map[string]bool
 }
 
 func NewHandler(svc *Service, repo *Repository) *Handler {
@@ -24,6 +27,19 @@ func NewHandler(svc *Service, repo *Repository) *Handler {
 // SetTenantResolver liga o resolvedor de subdomínio (vindo do pacote tenants).
 func (h *Handler) SetTenantResolver(fn func(c *fiber.Ctx, sub string) int64) {
 	h.resolveTenant = fn
+}
+
+// SetModulos liga o provedor de módulos por tenant (vindo do pacote tenants).
+func (h *Handler) SetModulos(fn func(ctx context.Context, tenantID int64) map[string]bool) {
+	h.modulos = fn
+}
+
+// modulosDe resolve os módulos de um tenant (mapa vazio se não configurado).
+func (h *Handler) modulosDe(ctx context.Context, tenantID int64) map[string]bool {
+	if h.modulos == nil {
+		return map[string]bool{}
+	}
+	return h.modulos(ctx, tenantID)
 }
 
 // tenantOf descobre o tenant da request de login pelo subdomínio (campo do
@@ -112,13 +128,18 @@ func (h *Handler) login(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "e-mail ou senha incorretos"})
 	}
-	return c.JSON(fiber.Map{"token": tok, "user": u})
+	return c.JSON(fiber.Map{"token": tok, "user": fiber.Map{
+		"id": u.ID, "nome": u.Nome, "email": u.Email, "papel": u.Papel,
+		"must_change_password": u.MustChange,
+		"modulos":              h.modulosDe(c.Context(), tenantID),
+	}})
 }
 
 func (h *Handler) me(c *fiber.Ctx) error {
 	u := UserFromCtx(c)
 	return c.JSON(fiber.Map{
 		"id": u.UserID, "nome": u.Nome, "email": u.Email, "papel": u.Papel,
+		"modulos": h.modulosDe(c.Context(), tenantctx.From(c.Context())),
 	})
 }
 

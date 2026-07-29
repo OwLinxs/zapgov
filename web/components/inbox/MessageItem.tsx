@@ -99,8 +99,36 @@ function Quote({ text }: { text: string }) {
   );
 }
 
-// Renderiza uma mensagem: nota interna, texto (WaBubble) ou mídia.
+// AuthorTag: nome do atendente que enviou (só no painel; cidadão não vê).
+function AuthorTag({ m }: { m: ApiMessage }) {
+  if (m.direction !== "out" || !m.autor) return null;
+  return (
+    <div className="wa-row out" style={{ marginBottom: 1 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa)", paddingRight: 2 }}>{m.autor}</span>
+    </div>
+  );
+}
+
+// Renderiza uma mensagem: evento de sistema, nota interna, texto (WaBubble) ou mídia.
 export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void }) {
+  if (m.direction === "evento") {
+    return (
+      <div className="wa-row" style={{ justifyContent: "center" }}>
+        <span
+          className="row center"
+          style={{
+            gap: 6, maxWidth: 420, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)",
+            borderRadius: 99, padding: "3px 12px", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center",
+          }}
+          title="Visível só para a equipe"
+        >
+          <Icon name="info" size={12} />
+          {m.body}
+          <span style={{ color: "var(--text-faint)" }}>· {hhmm(m.created_at)}</span>
+        </span>
+      </div>
+    );
+  }
   if (m.direction === "note") {
     return (
       <div className="wa-row" style={{ justifyContent: "center" }}>
@@ -122,6 +150,7 @@ export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: 
   if (!m.media_type) {
     return (
       <ReactionWrap m={m} onReact={onReact} onReply={onReply}>
+        <AuthorTag m={m} />
         {m.reply_preview ? (
           // Bolha custom com a citação (WaBubble não suporta children).
           <div className={"wa-row " + (m.direction === "out" ? "out" : "in")}>
@@ -148,6 +177,7 @@ export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: 
   }
   return (
     <ReactionWrap m={m} onReact={onReact} onReply={onReply}>
+      <AuthorTag m={m} />
       <MediaBubble m={m} />
       <FailNote m={m} />
     </ReactionWrap>

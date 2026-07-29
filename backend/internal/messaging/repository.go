@@ -89,6 +89,37 @@ func (r *Repository) SetReaction(ctx context.Context, waMessageID, emoji string)
 	return convID, err
 }
 
+// SetAuthor marca o autor (atendente) de uma mensagem enviada — exibido no
+// painel para a equipe saber quem respondeu. Não afeta o que o cidadão vê.
+func (r *Repository) SetAuthor(ctx context.Context, id int64, autor string) error {
+	if autor == "" {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx,
+		`UPDATE messages SET autor = $2 WHERE id = $1 AND tenant_id = $3`,
+		id, autor, tenantctx.From(ctx))
+	return err
+}
+
+// InsertEvent grava um evento de sistema na conversa (ex.: "Fulano encerrou").
+// direction 'evento' — visível só no painel da equipe, nunca vai pro cidadão.
+func (r *Repository) InsertEvent(ctx context.Context, convID int64, texto string) (*Message, error) {
+	sid, err := r.ensureOpenSession(ctx, convID)
+	if err != nil {
+		return nil, err
+	}
+	waID := fmt.Sprintf("evt-%d-%d", convID, time.Now().UnixNano())
+	m := &Message{}
+	err = r.pool.QueryRow(ctx, `
+		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status)
+		VALUES ($5, $1, $2, $3, 'evento', $4, 'evento')
+		RETURNING `+msgCols,
+		convID, sid, waID, texto, tenantctx.From(ctx),
+	).Scan(&m.ID, &m.ConversationID, &m.WAMessageID, &m.Direction, &m.Body, &m.Status,
+		&m.CreatedAt, &m.MediaType, &m.MediaID, &m.MediaMime, &m.MediaName, &m.Autor, &m.Reaction, &m.Error, &m.ReplyTo, &m.ReplyPreview)
+	return m, err
+}
+
 // AddNote grava uma nota interna na conversa (não vai pro cidadão).
 func (r *Repository) AddNote(ctx context.Context, convID int64, autor, body string) (*Message, error) {
 	sid, err := r.ensureOpenSession(ctx, convID)
@@ -332,7 +363,7 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 		FROM conversations c
 		LEFT JOIN LATERAL (
 			SELECT body FROM messages
-			WHERE conversation_id = c.id
+			WHERE conversation_id = c.id AND direction IN ('in','out')
 			ORDER BY created_at DESC
 			LIMIT 1
 		) m ON true

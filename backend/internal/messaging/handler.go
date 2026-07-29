@@ -99,6 +99,17 @@ func (h *Handler) assina(c *fiber.Ctx, body string) string {
 	return "*" + operador(c) + "*\n" + body
 }
 
+// marcaAutor grava o atendente que enviou a mensagem (exibido no painel) e
+// reflete no objeto retornado ao front. Independe da assinatura ao cidadão.
+func (h *Handler) marcaAutor(c *fiber.Ctx, msg *Message) {
+	if msg == nil {
+		return
+	}
+	nome := operador(c)
+	_ = h.svc.SetAuthor(c.Context(), msg.ID, nome)
+	msg.Autor = nome
+}
+
 // Register registra as rotas autenticadas de mensageria.
 // (Auth/JWT entra numa fatia posterior; aqui as rotas estão abertas no dev.)
 func (h *Handler) Register(r fiber.Router) {
@@ -197,6 +208,7 @@ func (h *Handler) sendMessage(c *fiber.Ctx) error {
 	}
 	// Respondeu uma conversa da fila → assume automaticamente.
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c)) // responder assume a conversa
+	h.marcaAutor(c, msg)
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
@@ -238,6 +250,7 @@ func (h *Handler) sendTemplate(c *fiber.Ctx) error {
 	// Conversa iniciada por nós (operador) → já entra em atendimento com quem iniciou.
 	// Assim, a resposta do cidadão NÃO dispara o bot (já está com humano).
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c))
+	h.marcaAutor(c, msg)
 	h.tag(c, msg.ConversationID)
 	// Template inicia um NOVO atendimento → a conversa vai pro setor de quem
 	// iniciou, mesmo que tivesse setor de um atendimento antigo (senão some da
@@ -286,6 +299,7 @@ func (h *Handler) sendMedia(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c)) // responder assume a conversa
+	h.marcaAutor(c, msg)
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
@@ -337,6 +351,7 @@ func (h *Handler) uploadMedia(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
 	_ = h.svc.Claim(c.Context(), msg.ConversationID, operador(c)) // responder assume a conversa
+	h.marcaAutor(c, msg)
 	h.tag(c, msg.ConversationID)
 	h.herdaSetor(c, msg.ConversationID)
 	return c.Status(fiber.StatusCreated).JSON(msg)
@@ -465,6 +480,7 @@ func (h *Handler) claim(c *fiber.Ctx) error {
 	if err := h.svc.Claim(c.Context(), int64(id), body.Atendente); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	h.svc.AddEvent(c.Context(), int64(id), operador(c)+" assumiu o atendimento")
 	h.tag(c, int64(id))
 	return c.JSON(fiber.Map{"ok": true})
 }
@@ -519,6 +535,7 @@ func (h *Handler) transfer(c *fiber.Ctx) error {
 	if err := h.svc.Transfer(c.Context(), int64(id), body.Setor); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	h.svc.AddEvent(c.Context(), int64(id), operador(c)+" transferiu para o setor "+body.Setor)
 	return c.JSON(fiber.Map{"ok": true})
 }
 
@@ -527,6 +544,7 @@ func (h *Handler) resolve(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
+	h.svc.AddEvent(c.Context(), int64(id), operador(c)+" encerrou o atendimento")
 	if err := h.svc.Resolve(c.Context(), int64(id)); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
