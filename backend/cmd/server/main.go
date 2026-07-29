@@ -122,16 +122,6 @@ func main() {
 	authH.SetModulos(func(ctx context.Context, tenantID int64) map[string]bool {
 		return tenantsRepo.Modulos(ctx, tenantID)
 	})
-	// requireModulo bloqueia (403) as rotas de um módulo desligado no tenant logado.
-	// Defesa real no backend — não basta esconder o item no menu.
-	requireModulo := func(nome string) fiber.Handler {
-		return func(c *fiber.Ctx) error {
-			if !tenantsRepo.Modulos(c.Context(), tenantctx.From(c.Context()))[nome] {
-				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "módulo não habilitado para este painel"})
-			}
-			return c.Next()
-		}
-	}
 
 	if cfg.JWTSecret == "dev-secret-troque-em-producao" {
 		log.Printf("⚠️  ATENÇÃO: JWT_SECRET está com o valor padrão de DEV. Defina JWT_SECRET em produção!")
@@ -183,6 +173,28 @@ func main() {
 	api.Use(audit.Middleware(auditRepo))
 	audit.NewHandler(auditRepo).Register(api, opsOnly) // GET /audit: admin/supervisor
 
+	// Gate de módulos por tenant (defesa real): bloqueia 403 as rotas de um módulo
+	// desligado. Um único middleware por PATH — só consulta o banco nos prefixos
+	// gated (não impacta as demais rotas). Registrado antes das features.
+	api.Use(func(c *fiber.Ctx) error {
+		var mod string
+		switch p := c.Path(); {
+		case strings.HasPrefix(p, "/campaigns"):
+			mod = "disparo"
+		case strings.HasPrefix(p, "/tickets"), strings.HasPrefix(p, "/field-techs"):
+			mod = "chamados"
+		case strings.HasPrefix(p, "/kb"):
+			mod = "base"
+		}
+		if mod == "" {
+			return c.Next()
+		}
+		if !tenantsRepo.Modulos(c.Context(), tenantctx.From(c.Context()))[mod] {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "módulo não habilitado para este painel"})
+		}
+		return c.Next()
+	})
+
 	authH.RegisterProtected(api) // /auth/me, /users (admin)
 
 	// Super Admin (cross-tenant): só o admin da plataforma (tenant 1).
@@ -205,7 +217,7 @@ func main() {
 	remindersRepo := reminders.NewRepository(pool)
 	reminders.NewHandler(remindersRepo).Register(api)
 	metricsH := metrics.NewHandler(metrics.NewRepository(pool))
-	metricsH.Register(api.Group("", opsOnly)) // dashboard: só admin/supervisor
+	metricsH.Register(api, opsOnly) // dashboard: só admin/supervisor
 	metricsH.RegisterReports(api, opsOnly)
 
 	templatesClient := templates.NewClient(cfg.WhatsAppWABAID, cfg.WhatsAppToken, cfg.WhatsAppAPIVersion)
@@ -257,7 +269,7 @@ func main() {
 			}
 		}
 	}()
-	campaigns.NewHandler(campaignSvc).Register(api.Group("", requireModulo("disparo")), opsOnly)
+	campaigns.NewHandler(campaignSvc).Register(api, opsOnly)
 
 	departments.NewHandler(departments.NewRepository(pool)).Register(api, opsOnly)
 	labelsRepo := labels.NewRepository(pool)
@@ -347,9 +359,9 @@ func main() {
 		_, _ = svc.SendText(ctx, from, fmt.Sprintf("✅ Chamado #%d finalizado. Obrigado!", t.Numero))
 		return true
 	}
-	tickets.NewHandler(ticketsSvc).Register(api.Group("", requireModulo("chamados")), opsOnly)
+	tickets.NewHandler(ticketsSvc).Register(api, opsOnly)
 	// Base de conhecimento (T.I.): leitura aberta, gestão p/ admin/supervisor.
-	kb.NewHandler(kb.NewRepository(pool)).Register(api.Group("", requireModulo("base")), opsOnly)
+	kb.NewHandler(kb.NewRepository(pool)).Register(api, opsOnly)
 	// Atendimento pelo chat: quando a conversa é assumida/resolvida/transferida,
 	// espelha o status no chamado ligado (kanban reflete o que acontece no inbox).
 	svc.OnConversationStatus = func(ctx context.Context, convID int64, status, atendente string) {

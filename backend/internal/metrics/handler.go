@@ -8,13 +8,15 @@ type Handler struct {
 
 func NewHandler(repo *Repository) *Handler { return &Handler{repo: repo} }
 
-func (h *Handler) Register(r fiber.Router) {
-	r.Get("/metrics/kpis", h.kpis)
-	r.Get("/metrics/volume", h.volume)
-	r.Get("/metrics/atendentes", h.atendentes)
-	r.Get("/metrics/satisfacao", h.satisfacao)
-	r.Get("/metrics/heatmap", h.heatmap)
-	r.Get("/activity", h.activity)
+// Register monta as métricas do dashboard. gestor (admin/supervisor) é aplicado
+// por rota — atendente não acessa o dashboard.
+func (h *Handler) Register(r fiber.Router, gestor fiber.Handler) {
+	r.Get("/metrics/kpis", gestor, h.kpis)
+	r.Get("/metrics/volume", gestor, h.volume)
+	r.Get("/metrics/atendentes", gestor, h.atendentes)
+	r.Get("/metrics/satisfacao", gestor, h.satisfacao)
+	r.Get("/metrics/heatmap", gestor, h.heatmap)
+	r.Get("/activity", gestor, h.activity)
 }
 
 func (h *Handler) heatmap(c *fiber.Ctx) error {
