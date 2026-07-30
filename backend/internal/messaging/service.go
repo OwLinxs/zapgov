@@ -529,6 +529,12 @@ func (s *Service) SetAuthor(ctx context.Context, id int64, autor string) error {
 	return s.repo.SetAuthor(ctx, id, autor)
 }
 
+// ConversationAttendant devolve o atendente atual da conversa ("" se ninguém).
+func (s *Service) ConversationAttendant(ctx context.Context, convID int64) string {
+	_, atendente, _ := s.repo.SetorAtendente(ctx, convID)
+	return atendente
+}
+
 // AddEvent registra um evento de sistema na conversa (resolvido/assumiu/
 // transferido) — some no painel da equipe, nunca é enviado ao cidadão.
 func (s *Service) AddEvent(ctx context.Context, convID int64, texto string) {
