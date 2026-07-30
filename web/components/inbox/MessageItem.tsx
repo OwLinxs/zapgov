@@ -112,20 +112,23 @@ function AuthorTag({ m }: { m: ApiMessage }) {
 // Renderiza uma mensagem: evento de sistema, nota interna, texto (WaBubble) ou mídia.
 export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void }) {
   if (m.direction === "evento") {
+    // Evento de sistema (resolver/assumir/transferir) — visual de nota interna,
+    // centralizado, visível só para a equipe (nunca vai pro cidadão).
     return (
       <div className="wa-row" style={{ justifyContent: "center" }}>
-        <span
-          className="row center"
+        <div
           style={{
-            gap: 6, maxWidth: 420, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)",
-            borderRadius: 99, padding: "3px 12px", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center",
+            maxWidth: 360, background: "var(--brand-soft)", border: "1px solid var(--border-subtle)",
+            borderRadius: 10, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.5, textAlign: "center",
           }}
-          title="Visível só para a equipe"
+          title="Registro do atendimento · visível só para a equipe"
         >
-          <Icon name="info" size={12} />
-          {m.body}
-          <span style={{ color: "var(--text-faint)" }}>· {hhmm(m.created_at)}</span>
-        </span>
+          <div className="row center" style={{ gap: 6, marginBottom: 2, color: "var(--brand-text)", fontWeight: 700, fontSize: 11, justifyContent: "center" }}>
+            <Icon name="info" size={12} /> Registro do atendimento
+          </div>
+          <div style={{ color: "var(--text-primary)" }}>{m.body}</div>
+          <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>{hhmm(m.created_at)}</div>
+        </div>
       </div>
     );
   }
