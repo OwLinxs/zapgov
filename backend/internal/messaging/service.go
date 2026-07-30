@@ -538,9 +538,11 @@ func (s *Service) ConversationAttendant(ctx context.Context, convID int64) strin
 // AddEvent registra um evento de sistema na conversa (resolvido/assumiu/
 // transferido) — some no painel da equipe, nunca é enviado ao cidadão.
 func (s *Service) AddEvent(ctx context.Context, convID int64, texto string) {
-	if _, err := s.repo.InsertEvent(ctx, convID, texto); err == nil {
-		s.emit(ctx, convID, "message")
+	if _, err := s.repo.InsertEvent(ctx, convID, texto); err != nil {
+		log.Printf("evento: falha ao gravar na conv %d: %v", convID, err)
+		return
 	}
+	s.emit(ctx, convID, "message")
 }
 
 // SetSetorIfEmpty define o setor da conversa se ainda não tiver (conversa

@@ -16,7 +16,7 @@ import {
   WaBubble,
   useToast,
 } from "@/components/ui";
-import { MessageItem } from "@/components/inbox/MessageItem";
+import { MessageItem, DateDivider, mesmoDia } from "@/components/inbox/MessageItem";
 import {
   listConversations,
   listConversationMessages,
@@ -1299,7 +1299,15 @@ export default function InboxPage() {
                 Sem mensagens ainda.
               </div>
             ) : (
-              msgs.map((m) => <MessageItem key={m.id} m={m} onReact={reagir} onReply={setReplyTo} />)
+              msgs.flatMap((m, i) => {
+                const prev = msgs[i - 1];
+                const els = [];
+                if (!prev || !mesmoDia(prev.created_at, m.created_at)) {
+                  els.push(<DateDivider key={"d" + m.id} iso={m.created_at} />);
+                }
+                els.push(<MessageItem key={m.id} m={m} onReact={reagir} onReply={setReplyTo} />);
+                return els;
+              })
             )}
           </div>
 
@@ -1563,9 +1571,15 @@ export default function InboxPage() {
               </div>
             )}
             <div className="wa-canvas">
-              {sessMsgs.map((m) => (
-                <MessageItem key={m.id} m={m} />
-              ))}
+              {sessMsgs.flatMap((m, i) => {
+                const prev = sessMsgs[i - 1];
+                const els = [];
+                if (!prev || !mesmoDia(prev.created_at, m.created_at)) {
+                  els.push(<DateDivider key={"d" + m.id} iso={m.created_at} />);
+                }
+                els.push(<MessageItem key={m.id} m={m} />);
+                return els;
+              })}
             </div>
           </div>
         )}

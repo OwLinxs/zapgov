@@ -109,6 +109,39 @@ function AuthorTag({ m }: { m: ApiMessage }) {
   );
 }
 
+// dateLabel: rótulo do separador de data (Hoje / Ontem / dd/mm/aaaa).
+export function dateLabel(iso: string): string {
+  const d = new Date(iso);
+  const hoje = new Date();
+  const ontem = new Date();
+  ontem.setDate(hoje.getDate() - 1);
+  if (d.toDateString() === hoje.toDateString()) return "Hoje";
+  if (d.toDateString() === ontem.toDateString()) return "Ontem";
+  return d.toLocaleDateString("pt-BR");
+}
+
+// mesmoDia: true se dois ISO caem no mesmo dia (para decidir o separador).
+export function mesmoDia(a: string, b: string): boolean {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+// DateDivider: pílula central de data entre blocos de mensagens (estilo WhatsApp).
+export function DateDivider({ iso }: { iso: string }) {
+  return (
+    <div className="wa-row" style={{ justifyContent: "center", margin: "6px 0" }}>
+      <span
+        style={{
+          fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", background: "var(--bg-sunken)",
+          border: "1px solid var(--border-subtle)", borderRadius: 99, padding: "3px 12px", textTransform: "uppercase",
+          letterSpacing: 0.3,
+        }}
+      >
+        {dateLabel(iso)}
+      </span>
+    </div>
+  );
+}
+
 // Renderiza uma mensagem: evento de sistema, nota interna, texto (WaBubble) ou mídia.
 export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void }) {
   if (m.direction === "evento") {
