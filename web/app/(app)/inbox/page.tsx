@@ -731,6 +731,7 @@ export default function InboxPage() {
     if (!active) return;
     try {
       await claimConversation(active.id, user?.nome ?? "Atendente");
+      await loadMsgs(active.id); // mostra o evento "assumiu o atendimento"
       await loadConvs();
       toast({ type: "success", title: "Conversa atribuída a você" });
     } catch (e) {
@@ -810,6 +811,7 @@ export default function InboxPage() {
     if (!active) return;
     try {
       await transferConversation(active.id, setor);
+      await loadMsgs(active.id); // mostra o evento "transferiu para o setor"
       await loadConvs();
       toast({ type: "success", title: "Conversa transferida", message: "Setor: " + setor });
     } catch (e) {
@@ -821,6 +823,7 @@ export default function InboxPage() {
     if (!active) return;
     try {
       await resolveConversation(active.id);
+      await loadMsgs(active.id); // mostra o evento "encerrou o atendimento"
       await loadConvs();
       toast({ type: "success", title: "Atendimento resolvido" });
     } catch (e) {
