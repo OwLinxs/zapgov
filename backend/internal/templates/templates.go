@@ -16,6 +16,7 @@ import (
 
 // Template é a forma exposta pela API (alinhada com o front).
 type Template struct {
+	ID        string   `json:"id"` // id do template na Meta (necessário para editar)
 	Name      string   `json:"name"`
 	Language  string   `json:"language"`
 	Status    string   `json:"status"`   // aprovado | pendente | rejeitado
@@ -65,6 +66,7 @@ func (c *Client) creds(ctx context.Context) (string, string, string) {
 
 // ---- forma crua da resposta da Meta ----
 type metaTemplate struct {
+	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Status         string `json:"status"`
 	Category       string `json:"category"`
@@ -132,6 +134,7 @@ func (c *Client) List(ctx context.Context) ([]Template, error) {
 
 func mapTemplate(t metaTemplate) Template {
 	tpl := Template{
+		ID:       t.ID,
 		Name:     t.Name,
 		Language: t.Language,
 		Status:   mapStatus(t.Status),
@@ -244,6 +247,79 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) error {
 			m = out.Error.Message
 		}
 		return fmt.Errorf("Meta recusou (%d): %s", resp.StatusCode, m)
+	}
+	return nil
+}
+
+// EditRequest edita os componentes de um template existente (por ID da Meta).
+// Nome, idioma e categoria NÃO mudam — a Meta não permite em template aprovado.
+type EditRequest struct {
+	ID       string
+	Corpo    string
+	Header   string
+	Footer   string
+	Botoes   []string
+	Exemplos []string
+}
+
+// Edit altera os componentes de um template já criado. Após editar, a Meta
+// devolve o template ao estado PENDING — fica inutilizável até reaprovar.
+func (c *Client) Edit(ctx context.Context, req EditRequest) error {
+	_, token, apiVer := c.creds(ctx)
+	if req.ID == "" {
+		return fmt.Errorf("id do template é obrigatório")
+	}
+	if token == "" {
+		return fmt.Errorf("token da Meta não configurado")
+	}
+	components := []map[string]any{}
+	if req.Header != "" {
+		components = append(components, map[string]any{"type": "HEADER", "format": "TEXT", "text": req.Header})
+	}
+	bodyComp := map[string]any{"type": "BODY", "text": req.Corpo}
+	if len(req.Exemplos) > 0 {
+		bodyComp["example"] = map[string]any{"body_text": [][]string{req.Exemplos}}
+	}
+	components = append(components, bodyComp)
+	if req.Footer != "" {
+		components = append(components, map[string]any{"type": "FOOTER", "text": req.Footer})
+	}
+	if len(req.Botoes) > 0 {
+		btns := make([]map[string]any, 0, len(req.Botoes))
+		for _, b := range req.Botoes {
+			btns = append(btns, map[string]any{"type": "QUICK_REPLY", "text": b})
+		}
+		components = append(components, map[string]any{"type": "BUTTONS", "buttons": btns})
+	}
+	raw, _ := json.Marshal(map[string]any{"components": components})
+
+	// Edição é POST direto no ID do template (não no endpoint da WABA).
+	endpoint := fmt.Sprintf("https://graph.facebook.com/%s/%s", apiVer, req.ID)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("chamar Graph API: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var out struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(body, &out)
+	if resp.StatusCode >= 300 || out.Error != nil {
+		m := "erro desconhecido"
+		if out.Error != nil {
+			m = out.Error.Message
+		}
+		return fmt.Errorf("Meta recusou a edição (%d): %s", resp.StatusCode, m)
 	}
 	return nil
 }

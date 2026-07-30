@@ -10,6 +10,8 @@ import {
 
 // Módulos que podem ser ligados/desligados por órgão (gate do menu + rotas).
 const MODULOS: { key: string; label: string; hint: string }[] = [
+  { key: "chatbot", label: "Chatbot / Fluxo", hint: "Editor do fluxo do bot e config de atendimento automático" },
+  { key: "fila", label: "Fila ao Vivo", hint: "Painel de fila em tempo real" },
   { key: "chamados", label: "Chamados T.I.", hint: "Helpdesk interno (kanban, despacho a técnicos)" },
   { key: "base", label: "Base de Conhecimento", hint: "Artigos de solução dos atendimentos" },
   { key: "disparo", label: "Disparo em massa", hint: "Campanhas de template para contatos" },

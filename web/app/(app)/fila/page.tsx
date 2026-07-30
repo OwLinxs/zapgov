@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Topbar } from "@/components/shell/Topbar";
 import { Button, Icon } from "@/components/ui";
 import { listConversations, getRoteamento, type ApiConversation } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { SETOR_COR } from "@/lib/data";
 
 // Painel de fila ao vivo (pensado pra TV/monitor da recepção): fila por setor
@@ -16,6 +18,12 @@ function minutosDesde(iso: string | null): number {
 }
 
 export default function FilaPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  // Módulo "fila" desligado no órgão → sem acesso ao painel.
+  useEffect(() => {
+    if (user && user.modulos && !user.modulos.fila) router.replace("/inbox");
+  }, [user, router]);
   const fullRef = useRef<HTMLDivElement>(null);
   const [fila, setFila] = useState<ApiConversation[]>([]);
   const [atendendo, setAtendendo] = useState<ApiConversation[]>([]);

@@ -17,6 +17,7 @@ func NewHandler(client *Client, repo *Repository) *Handler {
 func (h *Handler) Register(r fiber.Router, gestor, admin fiber.Handler) {
 	r.Get("/templates", h.list)
 	r.Post("/templates", gestor, h.create)
+	r.Post("/templates/edit", gestor, h.edit) // editar componentes (volta p/ aprovação)
 	r.Put("/templates/:name/setores", admin, h.setSetores)
 	// Grupos de templates (organização por secretaria): admin gerencia.
 	r.Get("/template-groups", h.listGroups)
@@ -113,6 +114,26 @@ func (h *Handler) create(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) edit(c *fiber.Ctx) error {
+	var req struct {
+		ID       string   `json:"id"`
+		Corpo    string   `json:"corpo"`
+		Header   string   `json:"header"`
+		Footer   string   `json:"footer"`
+		Botoes   []string `json:"botoes"`
+		Exemplos []string `json:"exemplos"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.ID == "" || req.Corpo == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id e corpo são obrigatórios"})
+	}
+	if err := h.client.Edit(c.Context(), EditRequest{
+		ID: req.ID, Corpo: req.Corpo, Header: req.Header, Footer: req.Footer, Botoes: req.Botoes, Exemplos: req.Exemplos,
+	}); err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {

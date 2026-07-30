@@ -24,10 +24,10 @@ interface NavDef {
 const NAV: NavDef[] = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard", roles: ["admin", "supervisor"] },
   { href: "/inbox", label: "Caixa de Entrada", icon: "inbox" },
-  { href: "/fila", label: "Fila ao Vivo", icon: "clock" },
+  { href: "/fila", label: "Fila ao Vivo", icon: "clock", modulo: "fila" },
   { href: "/chamados", label: "Chamados T.I.", icon: "shield", roles: ["admin", "supervisor"], modulo: "chamados" },
   { href: "/base", label: "Base de Conhecimento", icon: "fileText", roles: ["admin", "supervisor"], modulo: "base" },
-  { href: "/chatbot", label: "Chatbot", icon: "message", roles: ["admin", "supervisor"] },
+  { href: "/chatbot", label: "Chatbot", icon: "message", roles: ["admin", "supervisor"], modulo: "chatbot" },
   { href: "/disparo", label: "Novo Disparo", icon: "send", roles: ["admin", "supervisor"], modulo: "disparo" },
   { href: "/historico", label: "Histórico", icon: "history" },
   { href: "/contatos", label: "Contatos", icon: "contacts" },

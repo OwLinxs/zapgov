@@ -231,6 +231,7 @@ export async function listConversationMessages(id: number, marcarLida = true): P
 }
 
 export interface ApiTemplate {
+  id: string; // id do template na Meta (para editar)
   name: string;
   language: string;
   status: string; // aprovado | pendente | rejeitado
@@ -272,6 +273,19 @@ export async function createTemplate(input: {
   exemplos?: string[];
 }): Promise<void> {
   await post("/templates", input);
+}
+
+// editTemplate altera os componentes de um template existente (por id da Meta).
+// Após editar, o template volta para aprovação e fica indisponível até aprovar.
+export async function editTemplate(input: {
+  id: string;
+  corpo: string;
+  header?: string;
+  footer?: string;
+  botoes?: string[];
+  exemplos?: string[];
+}): Promise<void> {
+  await post("/templates/edit", input);
 }
 
 export const setTemplateSetores = (name: string, setores: string[]) =>

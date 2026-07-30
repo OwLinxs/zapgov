@@ -185,6 +185,8 @@ func main() {
 			mod = "chamados"
 		case strings.HasPrefix(p, "/kb"):
 			mod = "base"
+		case strings.HasPrefix(p, "/bot"), strings.HasPrefix(p, "/flow"):
+			mod = "chatbot"
 		}
 		if mod == "" {
 			return c.Next()

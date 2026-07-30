@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "@/components/shell/Topbar";
 import {
   Button,
+  ConfirmModal,
   Dropdown,
   EmptyState,
   Field,
@@ -17,7 +18,7 @@ import {
   useToast,
 } from "@/components/ui";
 import {
-  listTemplates, createTemplate, listDepartments, setTemplateSetores,
+  listTemplates, createTemplate, editTemplate, listDepartments, setTemplateSetores,
   listTemplateGroups, createTemplateGroup, deleteTemplateGroup, setTemplateGroup,
   type ApiTemplate, type ApiDepartment, type ApiTemplateGroup,
 } from "@/lib/api";
@@ -147,6 +148,124 @@ function NovoTemplateModal({ open, onClose, onCreated }: { open: boolean; onClos
   );
 }
 
+// Edição de template existente (corpo/cabeçalho/rodapé/botões). Nome, idioma e
+// categoria NÃO mudam (regra da Meta). Ao confirmar, avisa que fica sem uso até
+// reaprovar. Só faz sentido para aprovados/rejeitados (pendente não edita).
+function EditarTemplateModal({ tpl, onClose, onSaved }: { tpl: ApiTemplate | null; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [corpo, setCorpo] = useState("");
+  const [header, setHeader] = useState("");
+  const [footer, setFooter] = useState("");
+  const [botoes, setBotoes] = useState("");
+  const [exemplos, setExemplos] = useState<Record<string, string>>({});
+  const [confirmar, setConfirmar] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (tpl) {
+      setCorpo(tpl.body || "");
+      setHeader(tpl.header || "");
+      setFooter(tpl.footer || "");
+      setBotoes((tpl.buttons || []).join(", "));
+      setExemplos({});
+      setConfirmar(false);
+    }
+  }, [tpl]);
+
+  const botoesList = botoes.split(",").map((b) => b.trim()).filter(Boolean);
+  const varNums = Array.from(new Set((corpo.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((m) => m.replace(/\D/g, "")))).sort((a, b) => +a - +b);
+  const exemplosOk = varNums.every((n) => exemplos[n]?.trim());
+
+  async function salvar() {
+    if (!tpl || !corpo.trim() || !exemplosOk) return;
+    setSaving(true);
+    try {
+      await editTemplate({
+        id: tpl.id,
+        corpo,
+        header: header || undefined,
+        footer: footer || undefined,
+        botoes: botoesList,
+        exemplos: varNums.map((n) => exemplos[n] || ""),
+      });
+      toast({ type: "success", title: "Edição enviada", message: "Vai para aprovação da Meta. O template fica indisponível para envio até reaprovar." });
+      setConfirmar(false);
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast({ type: "error", title: "Não foi possível editar", message: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Modal open={!!tpl} onClose={onClose} width={720}>
+        <div className="modal-head">
+          <div className="modal-title">Editar template · {tpl?.name}</div>
+          <div className="modal-sub">Só corpo, cabeçalho, rodapé e botões. Nome, idioma e categoria não mudam (regra da Meta).</div>
+        </div>
+        <div className="modal-body" style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20 }}>
+          <div className="col" style={{ gap: 14 }}>
+            <Field label="Cabeçalho (opcional)">
+              <Input value={header} onChange={(e) => setHeader(e.target.value)} placeholder="Texto do topo" />
+            </Field>
+            <Field label="Corpo da mensagem" hint="Use {{1}}, {{2}}… para variáveis.">
+              <textarea className="textarea" style={{ minHeight: 120 }} value={corpo} onChange={(e) => setCorpo(e.target.value)} />
+            </Field>
+            {varNums.length > 0 && (
+              <div className="col" style={{ gap: 10 }}>
+                <span className="field-label">Exemplos das variáveis (obrigatório p/ aprovação)</span>
+                {varNums.map((n) => (
+                  <div key={n} className="row center" style={{ gap: 8 }}>
+                    <span className="wa-var" style={{ flex: "none", minWidth: 34, textAlign: "center" }}>{"{{" + n + "}}"}</span>
+                    <Input value={exemplos[n] || ""} onChange={(e) => setExemplos((v) => ({ ...v, [n]: e.target.value }))} placeholder="ex: João" />
+                  </div>
+                ))}
+              </div>
+            )}
+            <Field label="Rodapé (opcional)">
+              <Input value={footer} onChange={(e) => setFooter(e.target.value)} placeholder="Texto do rodapé" />
+            </Field>
+            <Field label="Botões (opcional)" hint="Rótulos separados por vírgula.">
+              <Input value={botoes} onChange={(e) => setBotoes(e.target.value)} placeholder="Confirmar, Reagendar" />
+            </Field>
+          </div>
+          <div className="col" style={{ gap: 8 }}>
+            <div className="field-label">Pré-visualização</div>
+            <div className="wa-canvas" style={{ flex: 1 }}>
+              {header && (
+                <div className="wa-row">
+                  <div className="wa-bubble in" style={{ fontWeight: 700, fontSize: 12 }}>{header}</div>
+                </div>
+              )}
+              <WaBubble text={corpo || "Sua mensagem…"} dir="out" highlight status="lido" time="09:14" buttons={botoesList.length ? botoesList : undefined} />
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" aria-disabled={saving || !corpo.trim() || !exemplosOk} onClick={() => setConfirmar(true)}>
+            Salvar edição
+          </Button>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={confirmar}
+        onClose={() => setConfirmar(false)}
+        onConfirm={salvar}
+        danger
+        icon="alertCircle"
+        title="Editar e reenviar para aprovação?"
+        message="Ao salvar, o template volta para análise da Meta e FICA INDISPONÍVEL PARA ENVIO até ser reaprovado (pode levar até 24h). Disparos que dependem dele ficam bloqueados nesse período."
+        confirmLabel={saving ? "Enviando…" : "Sim, editar"}
+      />
+    </>
+  );
+}
+
 // Gerência de grupos de templates (ex.: uma secretaria por grupo). Admin.
 function GruposModal({ open, groups, onClose, onChanged }: { open: boolean; groups: ApiTemplateGroup[]; onClose: () => void; onChanged: () => void }) {
   const toast = useToast();
@@ -207,6 +326,7 @@ export default function TemplatesPage() {
   const toast = useToast();
   const [tab, setTab] = useState("todos");
   const [novo, setNovo] = useState(false);
+  const [editar, setEditar] = useState<ApiTemplate | null>(null);
   const [tpls, setTpls] = useState<ApiTemplate[]>([]);
   const [deps, setDeps] = useState<ApiDepartment[]>([]);
   const [groups, setGroups] = useState<ApiTemplateGroup[]>([]);
@@ -439,6 +559,11 @@ export default function TemplatesPage() {
                       <div className="dropdown-item">
                         <Icon name="send" size={15} /> Usar em disparo
                       </div>
+                      {(t.status === "aprovado" || t.status === "rejeitado") && (
+                        <div className="dropdown-item" onClick={() => setEditar(t)}>
+                          <Icon name="edit" size={15} /> Editar template
+                        </div>
+                      )}
                       <div className="dropdown-item">
                         <Icon name="copy" size={15} /> Copiar nome
                       </div>
@@ -471,6 +596,7 @@ export default function TemplatesPage() {
         </div>
       </div>
       <NovoTemplateModal open={novo} onClose={() => setNovo(false)} onCreated={load} />
+      <EditarTemplateModal tpl={editar} onClose={() => setEditar(null)} onSaved={load} />
       <GruposModal open={gruposOpen} groups={groups} onClose={() => setGruposOpen(false)} onChanged={load} />
     </>
   );
