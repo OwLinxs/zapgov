@@ -28,8 +28,12 @@ else
   git pull --ff-only
 fi
 
-echo "==> Backend: rebuild + migrações"
-docker compose -f docker-compose.prod.yml up -d --build
+echo "==> Validando configuração e compilando backend"
+docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml build app worker
+
+echo "==> Backend: migrações + reinício"
+docker compose -f docker-compose.prod.yml up -d
 
 echo "==> Front: build + restart"
 cd web
@@ -44,5 +48,16 @@ else
 fi
 cd "$ROOT"
 sudo systemctl restart zapgov-web
+
+echo "==> Conferindo saúde da API e serviço do painel"
+API_HEALTH="http://${API_BIND_IP:?defina API_BIND_IP no .env}:8080/health"
+healthy=false
+for attempt in {1..30}; do
+  if curl --fail --silent --max-time 3 "$API_HEALTH" >/dev/null; then healthy=true; break; fi
+  sleep 2
+done
+[ "$healthy" = true ] || { echo "ERRO: API sem saúde após a atualização. Preserve o backup e confira logs de app/worker."; exit 1; }
+sudo systemctl is-active --quiet zapgov-web
+curl --fail --silent --max-time 10 http://127.0.0.1:3000/login >/dev/null
 
 echo "==> Atualizado. Versão: $(git describe --tags --always)"

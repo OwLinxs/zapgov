@@ -16,6 +16,7 @@ type Handler struct {
 	svc         *messaging.Service
 	provider    messaging.MessageProvider
 	verifyToken string
+	Accept      func(context.Context, []Envelope) error
 	// resolveTenant mapeia o número da Meta (phone_number_id) -> tenant_id.
 	// 0/desconhecido cai no tenant 1.
 	resolveTenant func(phoneNumberID string) int64
@@ -84,35 +85,37 @@ func (h *Handler) verify(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusForbidden)
 }
 
-// receive processa eventos. SEMPRE responde 200 para a Meta — erros internos são
-// logados; a idempotência (dedup por wa_message_id) cobre reentregas.
+// receive only acknowledges events after durable storage.
 func (h *Handler) receive(c *fiber.Ctx) error {
 	body := c.Body()
-
-	// Roteia o evento para o tenant dono do número (default 1) ANTES de validar
-	// a assinatura — o HMAC usa o app_secret daquele tenant.
-	tid := int64(1)
-	if h.resolveTenant != nil {
-		if got := h.resolveTenant(phoneNumberIDFromBody(body)); got > 0 {
-			tid = got
+	parts, err := splitPayload(body)
+	if err != nil {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
+	batch := make([]Envelope, 0, len(parts))
+	for _, part := range parts {
+		tid := int64(0)
+		if h.resolveTenant != nil {
+			tid = h.resolveTenant(phoneNumberIDFromBody(part))
 		}
-	}
-	ctxT := tenantctx.With(c.Context(), tid)
-
-	// Provider do tenant (credenciais próprias) ou o padrão (.env, tenant 1).
-	prov := h.provider
-	if h.resolveProvider != nil {
-		if p := h.resolveProvider(ctxT); p != nil {
-			prov = p
+		if tid <= 0 {
+			return c.SendStatus(fiber.StatusForbidden)
 		}
+		prov := h.provider
+		if h.resolveProvider != nil {
+			prov = h.resolveProvider(tenantctx.With(c.Context(), tid))
+		}
+		if prov == nil || !prov.VerifySignature(body, c.Get("X-Hub-Signature-256")) {
+			return c.SendStatus(fiber.StatusForbidden)
+		}
+		batch = append(batch, Envelope{TenantID: tid, Body: part})
 	}
-	if !prov.VerifySignature(body, c.Get("X-Hub-Signature-256")) {
-		log.Printf("webhook: assinatura HMAC inválida (tenant %d) — descartando", tid)
-		return c.SendStatus(fiber.StatusForbidden)
+	if h.Accept == nil {
+		return c.SendStatus(fiber.StatusServiceUnavailable)
 	}
-
-	if err := h.svc.ProcessWebhook(ctxT, body); err != nil {
-		log.Printf("webhook: erro ao processar (tenant %d): %v", tid, err)
+	if err := h.Accept(c.Context(), batch); err != nil {
+		log.Printf("webhook: persistir lote: %v", err)
+		return c.SendStatus(fiber.StatusServiceUnavailable)
 	}
 	return c.SendStatus(fiber.StatusOK)
 }

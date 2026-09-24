@@ -139,6 +139,24 @@ func (r *Repository) Get(ctx context.Context, id int64) (*Ticket, error) {
 	return &t, nil
 }
 
+// GetByNumero busca o chamado pelo número humano (#N) dentro do tenant — usado
+// pelo modo técnico no WhatsApp ("Buscar #12"). Devolve nil se não existir.
+func (r *Repository) GetByNumero(ctx context.Context, numero int) (*Ticket, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+cols+` FROM tickets WHERE numero = $1 AND tenant_id = $2`, numero, tenantctx.From(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	t, err := pgx.CollectOneRow(rows, scan)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // GetByConversation devolve o chamado ligado a uma conversa (nil se não há) —
 // usado pelo inbox para sugerir artigos relacionados ao atender pelo chat.
 func (r *Repository) GetByConversation(ctx context.Context, convID int64) (*Ticket, error) {

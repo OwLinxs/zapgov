@@ -55,7 +55,7 @@ export default function BasePage() {
     <>
       <Topbar
         title="Base de Conhecimento"
-        sub="Soluções registradas pelos técnicos — pesquise antes de abrir um chamado"
+        sub="Artigos e orientações para apoiar o atendimento"
         actions={podeEditar ? <Button variant="primary" icon="plus" onClick={() => setEditar("novo")}>Novo artigo</Button> : undefined}
       />
       <div className="content">
@@ -92,7 +92,6 @@ export default function BasePage() {
                   <div className="row center wrap" style={{ gap: 6, marginTop: 8 }}>
                     {a.categoria && <span className="badge badge-neutral" style={{ fontSize: 10 }}>{a.categoria}</span>}
                     {(a.tags ?? []).map((t) => <span key={t} className="mono faint" style={{ fontSize: 10 }}>#{t}</span>)}
-                    {a.ticket_id && <span className="mono faint" style={{ fontSize: 10 }}>chamado #{a.ticket_id}</span>}
                   </div>
                 </div>
               ))}
@@ -158,7 +157,6 @@ function VerArtigo({ id, podeEditar, onClose, onEditar, onMudou }: {
 
         <div className="muted" style={{ fontSize: 11.5 }}>
           {a.autor && <>por {a.autor} · </>}atualizado {fmtData(a.atualizado_em)} · {a.views} visualizações
-          {a.ticket_id && <> · chamado #{a.ticket_id}</>}
         </div>
 
         <div className="row center" style={{ gap: 8 }}>

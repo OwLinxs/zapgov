@@ -41,3 +41,11 @@ DATABASE_URL=postgres://...?sslmode=require  # TLS no banco
 - RBAC por papel (admin/supervisor/atendente), back + front
 - HMAC-SHA256 no webhook da Meta
 - Queries parametrizadas (pgx) — sem SQL injection
+
+## Configuração adicional e migrações
+
+`META_CREDENTIALS_KEY` (64 caracteres hexadecimais) é obrigatória em produção.
+`SEED_ADMIN_PASSWORD` deve ser definida para instalações novas. Consulte
+[UPGRADE.md](../deploy/UPGRADE.md) para migrações, reconciliação de campanhas e
+limites de rollback. A rede interna do Compose usa PostgreSQL sem TLS; o TLS
+no banco citado acima exige configuração própria fora desse modelo.

@@ -6,6 +6,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -47,9 +49,17 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 
 // ensure garante uma linha de org_settings para o tenant (criada sob demanda
 // quando um tenant é provisionado). id = tenant_id por convenção.
+// ensure garante a linha de org_settings do tenant. Auto-corretivo: cria a linha
+// só se ainda não existir, escolhendo um id LIVRE (max+1) — antes forçava
+// id = tenant_id, que colidia com o id de outra linha e a criação falhava calada,
+// deixando todo GET de settings em 500 (tela em skeleton). Agora loga a causa.
 func (r *Repository) ensure(ctx context.Context, tid int64) {
-	_, _ = r.pool.Exec(ctx,
-		`INSERT INTO org_settings (id, tenant_id) VALUES ($1, $1) ON CONFLICT DO NOTHING`, tid)
+	if _, err := r.pool.Exec(ctx, `
+		INSERT INTO org_settings (id, tenant_id)
+		SELECT COALESCE((SELECT max(id) FROM org_settings), 0) + 1, $1
+		WHERE NOT EXISTS (SELECT 1 FROM org_settings WHERE tenant_id = $1)`, tid); err != nil {
+		log.Printf("settings: ensure org_settings tenant %d falhou: %v", tid, err)
+	}
 }
 
 func (r *Repository) GetOrg(ctx context.Context) (Org, error) {
@@ -100,6 +110,35 @@ func (r *Repository) GetRoteamento(ctx context.Context) (Roteamento, error) {
 	err := r.pool.QueryRow(ctx, `SELECT roteamento_setor, etiqueta_atendente, sla_minutos FROM org_settings WHERE tenant_id = $1`, tid).
 		Scan(&rt.PorSetor, &rt.PorEtiqueta, &rt.SLAMinutos)
 	return rt, err
+}
+
+// GetVisibilidade devolve os grupos de setores que se enxergam. Cada grupo é
+// uma lista de nomes de setor; setor fora de qualquer grupo é isolado.
+func (r *Repository) GetVisibilidade(ctx context.Context) ([][]string, error) {
+	tid := tenantctx.From(ctx)
+	r.ensure(ctx, tid)
+	var b []byte
+	if err := r.pool.QueryRow(ctx, `SELECT visibilidade_setores FROM org_settings WHERE tenant_id = $1`, tid).Scan(&b); err != nil {
+		return nil, err
+	}
+	grupos := [][]string{}
+	if len(b) > 0 {
+		_ = json.Unmarshal(b, &grupos)
+	}
+	return grupos, nil
+}
+
+// SetVisibilidade regrava os grupos de visibilidade de setores.
+func (r *Repository) SetVisibilidade(ctx context.Context, grupos [][]string) error {
+	if grupos == nil {
+		grupos = [][]string{}
+	}
+	b, err := json.Marshal(grupos)
+	if err != nil {
+		return err
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE org_settings SET visibilidade_setores = $1::jsonb WHERE tenant_id = $2`, b, tenantctx.From(ctx))
+	return err
 }
 
 func (r *Repository) SetRoteamento(ctx context.Context, rt Roteamento) error {

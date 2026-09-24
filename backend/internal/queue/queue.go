@@ -4,6 +4,9 @@ package queue
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 )
@@ -15,13 +18,14 @@ const QueueCampaigns = "campaigns"
 
 // CampaignSendPayload é o trabalho de enviar UMA mensagem de uma campanha.
 type CampaignSendPayload struct {
-	TenantID   int64    `json:"tenant_id"`
-	CampaignID int64    `json:"campaign_id"`
-	To         string   `json:"to"`
-	Template   string   `json:"template"`
-	Language   string   `json:"language"`
-	Params     []string `json:"params"`
-	Preview    string   `json:"preview"`
+	RecipientID int64    `json:"recipient_id"`
+	TenantID    int64    `json:"tenant_id"`
+	CampaignID  int64    `json:"campaign_id"`
+	To          string   `json:"to"`
+	Template    string   `json:"template"`
+	Language    string   `json:"language"`
+	Params      []string `json:"params"`
+	Preview     string   `json:"preview"`
 }
 
 // Client enfileira tarefas (lado da API).
@@ -45,6 +49,11 @@ func (c *Client) EnqueueCampaignSend(p CampaignSendPayload) error {
 		asynq.NewTask(TypeCampaignSend, body),
 		asynq.Queue(QueueCampaigns),
 		asynq.MaxRetry(3),
+		asynq.TaskID(fmt.Sprintf("campaign-recipient-%d", p.RecipientID)),
+		asynq.Retention(24*time.Hour),
 	)
+	if errors.Is(err, asynq.ErrTaskIDConflict) {
+		return nil
+	}
 	return err
 }

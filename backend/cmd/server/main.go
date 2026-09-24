@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
-	"strconv"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -40,12 +39,12 @@ import (
 	"zapgov/backend/internal/templates"
 	"zapgov/backend/internal/tenantctx"
 	"zapgov/backend/internal/tenants"
-	"zapgov/backend/internal/tickets"
 	"zapgov/backend/internal/webhook"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -76,6 +75,7 @@ func main() {
 
 	// Eventos em tempo real (SSE) para o inbox.
 	hub := realtime.NewHub()
+	defer hub.ConnectRedis(ctx, cfg.RedisAddr)()
 	svc.OnEvent = func(tenantID, convID int64, kind, name, preview string) {
 		hub.Publish(realtime.Event{TenantID: tenantID, Type: kind, ConversationID: convID, Name: name, Preview: preview})
 	}
@@ -104,17 +104,22 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: corsOrigins(),
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders: "Content-Type,Authorization",
+		AllowHeaders: "Content-Type,Authorization,X-Tenant",
 	}))
 
 	// Auth: serviço + seed do admin padrão na primeira subida.
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(authRepo, cfg.JWTSecret)
-	authSvc.EnsureSeedAdmin(ctx, 1, "", "") // admin do tenant padrão
+	if err := authSvc.EnsureSeedAdmin(ctx, 1, "", ""); err != nil {
+		log.Fatalf("administrador inicial: %v", err)
+	}
 	authH := auth.NewHandler(authSvc, authRepo)
 
 	// Tenants (escopo compartilhado): resolve subdomínio/número -> tenant.
 	tenantsRepo := tenants.NewRepository(pool)
+	if err := tenantsRepo.SealExisting(ctx); err != nil {
+		log.Fatalf("credenciais: %v", err)
+	}
 	authH.SetTenantResolver(func(c *fiber.Ctx, sub string) int64 {
 		return tenantsRepo.IDBySubdomain(c.Context(), sub)
 	})
@@ -159,11 +164,55 @@ func main() {
 	svc.ProviderResolver = provResolver
 	whHandler := webhook.NewHandler(svc, provider, cfg.WebhookVerifyToken)
 	whHandler.SetTenantResolver(func(phoneNumberID string) int64 {
-		return tenantsRepo.IDByPhoneNumberID(context.Background(), phoneNumberID)
+		tid := tenantsRepo.IDByPhoneNumberID(context.Background(), phoneNumberID)
+		if tid == 0 && phoneNumberID != "" && phoneNumberID == cfg.WhatsAppPhoneNumberID {
+			return 1
+		}
+		return tid
 	})
 	whHandler.SetProviderResolver(provResolver)
+	webhookInbox := webhook.NewInbox(pool)
+	whHandler.Accept = webhookInbox.Accept
 	whHandler.Register(app) // Meta chama direto
-	hub.Register(app, authSvc.TenantFromToken) // GET /events (SSE por tenant, auth por ?token=)
+	settingsRepo := settings.NewRepository(pool)
+	hub.Register(app, authSvc.TenantFromToken, func(token string, event realtime.Event) bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		claims, err := authSvc.ValidateSession(ctx, token)
+		if err != nil || claims.MustChange || claims.TenantID != event.TenantID {
+			return false
+		}
+		if event.ConversationID == 0 {
+			return true
+		}
+		ctx = tenantctx.With(ctx, claims.TenantID)
+		if claims.Papel != "atendente" {
+			return repo.CanAccess(ctx, event.ConversationID, nil)
+		}
+		routing, err := settingsRepo.GetRoteamento(ctx)
+		if err != nil {
+			return false
+		}
+		if !routing.PorSetor {
+			return repo.CanAccess(ctx, event.ConversationID, nil)
+		}
+		if claims.Setor == "" {
+			return false
+		}
+		groups, err := settingsRepo.GetVisibilidade(ctx)
+		if err != nil {
+			return false
+		}
+		sectors := []string{claims.Setor}
+		for _, group := range groups {
+			for _, sector := range group {
+				if sector == claims.Setor {
+					sectors = group
+				}
+			}
+		}
+		return repo.CanAccess(ctx, event.ConversationID, sectors)
+	}) // GET /events (SSE por tenant, auth por ?token=)
 
 	// ---------- Rotas PROTEGIDAS (exigem JWT) ----------
 	api := app.Group("", authSvc.Required())
@@ -244,13 +293,6 @@ func main() {
 	campRepo := campaigns.NewRepository(pool)
 	campaignSvc := campaigns.NewService(campRepo, queueClient, templatesClient)
 	campaignSvc.SemWhatsApp = contactsRepo.SemWhatsApp // pula números sem WhatsApp
-	// Contadores do disparo: o webhook de status (delivered/read/failed) de
-	// mensagens de campanha atualiza entregues/lidas/falhas da campanha.
-	svc.OnCampaignStatus = func(ctx context.Context, campID int64, oldSt, newSt string) {
-		if err := campRepo.ApplyStatus(ctx, campID, oldSt, newSt); err != nil {
-			slog.Error("campanha: atualizar contadores", "campanha", campID, "err", err)
-		}
-	}
 	// Lembrete de véspera (personalizado): delega pro mesmo motor do envio
 	// individual. Closure pois msgHandler.OnDateInTemplate é definido mais abaixo.
 	campaignSvc.OnDateInTemplate = func(ctx context.Context, phone, nome string, data time.Time) {
@@ -263,8 +305,13 @@ func main() {
 	go func() {
 		t := time.NewTicker(time.Minute)
 		defer t.Stop()
-		for range t.C {
-			if n, err := campaignSvc.DispatchDue(context.Background(), 10); err != nil {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+			if n, err := campaignSvc.DispatchDue(ctx, 10); err != nil {
 				slog.Error("disparo agendado: erro", "err", err)
 			} else if n > 0 {
 				slog.Info("disparos agendados despachados", "n", n)
@@ -280,134 +327,15 @@ func main() {
 
 	chatbot.NewHandler(chatbot.NewService(chatbot.NewRepository(pool), svc)).Register(api, opsOnly)
 
-	// Módulo de chamados do T.I. (helpdesk). Reaproveita o envio de template do
-	// messaging.Service p/ notificar o solicitante por WhatsApp.
-	ticketsRepo := tickets.NewRepository(pool)
-	ticketsSvc := tickets.NewService(ticketsRepo)
-	// Chatbot ignora os números dos técnicos de campo (eles só abrem a janela de
-	// 24h para receber ordens; botões de ação continuam tratados).
-	svc.IsBotExempt = func(ctx context.Context, from string) bool {
-		fc := messaging.CanonPhone(from)
-		techs, err := ticketsRepo.FieldTechs(ctx)
-		if err != nil {
-			return false
-		}
-		for _, t := range techs {
-			if messaging.CanonPhone(t.Telefone) == fc {
-				return true
-			}
-		}
-		return false
-	}
-	// notificarChamado avisa o solicitante: tenta texto livre (grátis, dentro da
-	// janela de 24h — o solicitante normalmente acabou de interagir); se a janela
-	// fechou, cai para o template aprovado. Sem janela aberta E sem template
-	// aprovado, registra aviso (não quebra o fluxo do chamado).
-	notificarChamado := func(ctx context.Context, fone, texto, template string, params []string) {
-		if fone == "" {
-			return
-		}
-		if _, err := svc.SendText(ctx, fone, texto); err == nil {
-			return
-		} else if errors.Is(err, messaging.ErrOptedOut) {
-			return // descadastrado (LGPD): não insiste
-		}
-		// Janela fechada (ou texto recusado): usa o template aprovado.
-		if _, err := svc.SendTemplate(ctx, fone, template, "pt_BR", params, texto); err != nil {
-			slog.Warn("chamado: falha ao notificar (texto e template)", "template", template, "err", err)
-		}
-	}
-	ticketsSvc.OnAssigned = func(ctx context.Context, t *tickets.Ticket) {
-		texto := fmt.Sprintf("Seu chamado #%d está sendo atendido por %s.", t.Numero, t.Tecnico)
-		notificarChamado(ctx, t.SolicitanteFone, texto, "chamado_atribuido",
-			[]string{fmt.Sprintf("%d", t.Numero), t.Tecnico})
-	}
-	ticketsSvc.OnResolved = func(ctx context.Context, t *tickets.Ticket) {
-		texto := fmt.Sprintf("Chamado #%d resolvido. Obrigado!", t.Numero)
-		notificarChamado(ctx, t.SolicitanteFone, texto, "chamado_resolvido",
-			[]string{fmt.Sprintf("%d", t.Numero)})
-	}
-	// Despacho: envia a ordem de serviço no WhatsApp do técnico de campo COM um
-	// botão "Finalizar #N" cuja chave carrega o id do chamado (fechar_<id>) — assim
-	// o técnico, mesmo com vários chamados, fecha o certo. Exige a janela de 24h
-	// aberta (mensagem interativa); fechada → falha com aviso claro (sem template,
-	// que iria sem botão e não resolveria a finalização).
-	ticketsSvc.OnDispatch = func(ctx context.Context, fone, texto string, t *tickets.Ticket) error {
-		opts := []messaging.MenuOption{{Key: fmt.Sprintf("fechar_%d", t.ID), Label: fmt.Sprintf("✅ Finalizar #%d", t.Numero)}}
-		if _, err := svc.SendMenu(ctx, fone, texto, opts); err != nil {
-			if errors.Is(err, messaging.ErrWindowClosed) {
-				return fmt.Errorf("a janela de 24h do técnico está fechada — peça para ele mandar uma mensagem ao número do T.I. e tente de novo")
-			}
-			return fmt.Errorf("falha ao enviar ao técnico: %w", err)
-		}
-		return nil
-	}
-	// Técnico tocou "Finalizar #N": fecha o chamado identificado pela chave do
-	// botão e confirma. O fechamento notifica o solicitante (OnResolved).
-	svc.OnButtonAction = func(ctx context.Context, from, buttonID string) bool {
-		idStr, ok := strings.CutPrefix(buttonID, "fechar_")
-		if !ok {
-			return false
-		}
-		tid, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil {
-			return false
-		}
-		t, err := ticketsSvc.SetStatus(ctx, tid, "resolvido")
-		if err != nil {
-			_, _ = svc.SendText(ctx, from, "Não consegui finalizar esse chamado. Confira com a equipe.")
-			return true
-		}
-		_, _ = svc.SendText(ctx, from, fmt.Sprintf("✅ Chamado #%d finalizado. Obrigado!", t.Numero))
-		return true
-	}
-	tickets.NewHandler(ticketsSvc).Register(api, opsOnly)
-	// Base de conhecimento (T.I.): leitura aberta, gestão p/ admin/supervisor.
+	// Base de conhecimento independente do módulo de chamados.
 	kb.NewHandler(kb.NewRepository(pool)).Register(api, opsOnly)
-	// Atendimento pelo chat: quando a conversa é assumida/resolvida/transferida,
-	// espelha o status no chamado ligado (kanban reflete o que acontece no inbox).
-	svc.OnConversationStatus = func(ctx context.Context, convID int64, status, atendente string) {
-		ts := map[string]string{"em_atendimento": "em_andamento", "resolvido": "resolvido", "aguardando": "aguardando"}[status]
-		if ts == "" {
-			return
-		}
-		if err := ticketsSvc.SyncFromConversation(ctx, convID, ts, atendente); err != nil {
-			slog.Warn("chamado: sincronizar do chat", "conv", convID, "err", err)
-		}
-	}
 
 	// Motor de fluxo (grafo de blocos). É ele que processa o inbound agora.
 	flowRepo := flow.NewRepository(pool)
 	flowSvc := flow.NewService(flowRepo, svc)
 	svc.OnInbound = flowSvc.HandleInbound
-	// Bloco "abrir_chamado" do fluxo cria um chamado com as variáveis coletadas.
-	// Roda no ctx do tenant (T.I.) → grava no tenant certo automaticamente.
-	flowSvc.OnOpenTicket = func(ctx context.Context, from, nome string, vars map[string]string) (int, error) {
-		titulo := firstNonEmpty(vars["titulo"], vars["assunto"], vars["descricao"], "Chamado via WhatsApp")
-		// Liga o chamado à conversa de origem (técnico abre o WhatsApp que o gerou).
-		var convID *int64
-		if id, _ := svc.ConversationIDByPhone(ctx, from); id > 0 {
-			convID = &id
-		}
-		t, err := ticketsSvc.Create(ctx, tickets.CreateInput{
-			Titulo:          titulo,
-			Descricao:       vars["descricao"],
-			Categoria:       vars["categoria"],
-			Prioridade:      vars["prioridade"], // default 'media' no service
-			Secretaria:      vars["secretaria"],
-			Local:           vars["local"],
-			SolicitanteNome: nome,
-			SolicitanteFone: from, // já canônico no HandleInbound
-			ConversationID:  convID,
-		})
-		if err != nil {
-			return 0, err
-		}
-		return t.Numero, nil
-	}
 	flow.NewHandler(flowRepo).Register(api, opsOnly)
 
-	settingsRepo := settings.NewRepository(pool)
 	// Assinatura do atendente no fim das mensagens (config por tenant).
 	msgHandler.SignatureEnabled = func(ctx context.Context) bool {
 		on, _ := settingsRepo.GetAssinatura(ctx)
@@ -415,8 +343,13 @@ func main() {
 	}
 	// Roteamento por setor: atendente só vê conversas do próprio setor.
 	msgHandler.RouteBySetor = func(ctx context.Context) bool {
-		rt, _ := settingsRepo.GetRoteamento(ctx)
-		return rt.PorSetor
+		rt, err := settingsRepo.GetRoteamento(ctx)
+		return err != nil || rt.PorSetor
+	}
+	// Grupos de setores que se enxergam (visibilidade por grupo).
+	msgHandler.VisGroups = func(ctx context.Context) [][]string {
+		g, _ := settingsRepo.GetVisibilidade(ctx)
+		return g
 	}
 	// Chatbot on/off: desligado, inbound vai direto pra fila.
 	svc.ChatbotEnabled = func(ctx context.Context) bool {
@@ -456,26 +389,33 @@ func main() {
 	go func() {
 		t := time.NewTicker(time.Minute)
 		defer t.Stop()
-		for range t.C {
-			due, err := remindersRepo.Due(context.Background(), 50)
-			if err != nil {
-				continue
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
 			}
-			for _, rm := range due {
-				ctx := tenantctx.With(context.Background(), rm.TenantID)
-				l, err := settingsRepo.GetLembrete(ctx)
-				if err != nil || !l.Ativo || l.Template == "" {
-					_ = remindersRepo.MarkStatus(ctx, rm.ID, "cancelado")
-					continue
+			for batch := 0; batch < 50; batch++ {
+				due, err := remindersRepo.Due(ctx, 1)
+				if err != nil || len(due) == 0 {
+					break
 				}
-				params := []string{firstName(rm.Nome), rm.DataEvento.Format("02/01/2006")}
-				preview := "[lembrete automático: " + l.Template + " — " + rm.DataEvento.Format("02/01/2006") + "]"
-				if _, err := svc.SendTemplate(ctx, rm.Phone, l.Template, l.Idioma, params, preview); err != nil {
-					slog.Error("lembrete: envio falhou", "id", rm.ID, "err", err)
-					_ = remindersRepo.MarkStatus(ctx, rm.ID, "falhou")
-					continue
+				for _, rm := range due {
+					ctx := tenantctx.With(ctx, rm.TenantID)
+					l, err := settingsRepo.GetLembrete(ctx)
+					if err != nil || !l.Ativo || l.Template == "" {
+						_ = remindersRepo.MarkStatus(ctx, rm.ID, "cancelado")
+						continue
+					}
+					params := []string{firstName(rm.Nome), rm.DataEvento.Format("02/01/2006")}
+					preview := "[lembrete automático: " + l.Template + " — " + rm.DataEvento.Format("02/01/2006") + "]"
+					if _, err := svc.SendTemplate(ctx, rm.Phone, l.Template, l.Idioma, params, preview); err != nil {
+						slog.Error("lembrete: envio falhou", "id", rm.ID, "err", err)
+						_ = remindersRepo.MarkStatus(ctx, rm.ID, "revisao")
+						continue
+					}
+					_ = remindersRepo.MarkStatus(ctx, rm.ID, "enviado")
 				}
-				_ = remindersRepo.MarkStatus(ctx, rm.ID, "enviado")
 			}
 		}
 	}()
@@ -573,8 +513,13 @@ func main() {
 	go func() {
 		t := time.NewTicker(5 * time.Minute)
 		defer t.Stop()
-		for range t.C {
-			if n, err := svc.AutoResolveExpired(context.Background()); err != nil {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+			if n, err := svc.AutoResolveExpired(ctx); err != nil {
 				slog.Error("auto-resolve: erro", "err", err)
 			} else if n > 0 {
 				slog.Info("conversas finalizadas por janela expirada", "n", n)
@@ -583,6 +528,13 @@ func main() {
 	}()
 
 	log.Printf("ZapGov API ouvindo na porta %s", cfg.Port)
+	go webhookInbox.Run(ctx, svc.ProcessWebhook)
+	go func() {
+		<-ctx.Done()
+		if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
+			log.Printf("shutdown: %v", err)
+		}
+	}()
 	if err := app.Listen(":" + cfg.Port); err != nil {
 		log.Fatalf("listen: %v", err)
 	}

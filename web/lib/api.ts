@@ -1,5 +1,5 @@
 // Client da API ZapGov (backend Go). Base configurável por env.
-// Nesta fatia cobre só o inbox (conversas/mensagens/envio); demais telas seguem em mock.
+// Integra os módulos ativos do painel com a API autenticada.
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -126,7 +126,8 @@ export interface AuthUser {
 }
 
 export async function changePassword(senha_atual: string, nova_senha: string): Promise<void> {
-  await post("/auth/password", { senha_atual, nova_senha });
+  const result = await post<{ token: string }>("/auth/password", { senha_atual, nova_senha });
+  localStorage.setItem("zg-token", result.token);
 }
 
 // currentSub deriva o subdomínio do host atual (ti.zap.francisco… -> "ti") para
@@ -288,6 +289,12 @@ export async function editTemplate(input: {
   await post("/templates/edit", input);
 }
 
+// Grupos de setores que se enxergam (visibilidade por grupo, por tenant).
+export const getVisibilidade = async () =>
+  (await get<{ grupos: string[][] }>("/settings/visibilidade")).grupos ?? [];
+export const setVisibilidade = (grupos: string[][]) =>
+  post("/settings/visibilidade", { grupos }, "PUT");
+
 export const setTemplateSetores = (name: string, setores: string[]) =>
   post(`/templates/${encodeURIComponent(name)}/setores`, { setores }, "PUT");
 
@@ -338,6 +345,8 @@ export async function importContacts(file: File): Promise<ImportResult> {
 }
 
 export interface ApiCampaign {
+  puladas: number;
+  revisao: number;
   id: number;
   template: string;
   language: string;
@@ -728,80 +737,6 @@ export const setTenantMeta = (id: number, m: TenantMeta) =>
   post(`/admin/tenants/${id}/meta`, m, "PUT");
 export const suspendTenant = (id: number) => post(`/admin/tenants/${id}/suspend`, {});
 export const activateTenant = (id: number) => post(`/admin/tenants/${id}/activate`, {});
-
-// ---- Chamados (helpdesk T.I.) ----
-export interface ApiTicket {
-  id: number;
-  numero: number;
-  titulo: string;
-  descricao: string;
-  categoria: string;
-  prioridade: "baixa" | "media" | "alta" | "critica";
-  status: "aberto" | "em_andamento" | "aguardando" | "resolvido" | "cancelado";
-  solicitante_nome: string;
-  solicitante_fone: string;
-  secretaria: string;
-  local: string;
-  tecnico: string;
-  conversation_id: number | null;
-  criado_em: string;
-  atribuido_em: string | null;
-  resolvido_em: string | null;
-  sla_venc: string | null;
-}
-export interface ApiTicketComment {
-  id: number;
-  ticket_id: number;
-  autor: string;
-  body: string;
-  interno: boolean;
-  criado_em: string;
-}
-export interface ApiTicketMetrics {
-  abertos: number;
-  em_andamento: number;
-  aguardando: number;
-  sla_estourado: number;
-  resolvidos_7d: number;
-}
-
-export async function listTickets(f?: { status?: string; prioridade?: string; categoria?: string; tecnico?: string }): Promise<ApiTicket[]> {
-  const qs = new URLSearchParams();
-  if (f?.status) qs.set("status", f.status);
-  if (f?.prioridade) qs.set("prioridade", f.prioridade);
-  if (f?.categoria) qs.set("categoria", f.categoria);
-  if (f?.tecnico) qs.set("tecnico", f.tecnico);
-  const suffix = qs.toString() ? "?" + qs.toString() : "";
-  return (await get<{ tickets: ApiTicket[] }>("/tickets" + suffix)).tickets ?? [];
-}
-export const getTicketMetrics = () => get<ApiTicketMetrics>("/tickets/metrics");
-export const getTicket = (id: number) => get<{ ticket: ApiTicket; comments: ApiTicketComment[] }>(`/tickets/${id}`);
-// Chamado ligado a uma conversa (null se a conversa não é um chamado).
-export const getTicketByConversation = async (convId: number) =>
-  (await get<{ ticket: ApiTicket | null }>(`/tickets/by-conversation/${convId}`)).ticket;
-export const createTicket = (t: {
-  titulo: string; descricao?: string; categoria?: string; prioridade?: string;
-  solicitante_nome?: string; solicitante_fone?: string; secretaria?: string; local?: string;
-}) => post<ApiTicket>("/tickets", t);
-export const setTicketStatus = (id: number, status: string) => post<ApiTicket>(`/tickets/${id}/status`, { status }, "PUT");
-export const setTicketPrioridade = (id: number, prioridade: string) => post<ApiTicket>(`/tickets/${id}/prioridade`, { prioridade }, "PUT");
-
-// Técnicos de campo (contatos de WhatsApp que recebem ordens de serviço).
-export interface ApiFieldTech {
-  id: number;
-  nome: string;
-  telefone: string;
-  ativo: boolean;
-}
-export const listFieldTechs = async () => (await get<{ techs: ApiFieldTech[] }>("/field-techs")).techs ?? [];
-export const createFieldTech = (nome: string, telefone: string) => post<ApiFieldTech>("/field-techs", { nome, telefone });
-export const deleteFieldTech = (id: number) => del(`/field-techs/${id}`);
-// texto vazio = ordem padrão; preenchido = mensagem editada pelo operador.
-export const dispatchTicket = (id: number, techId: number, texto = "") =>
-  post<{ ok: boolean; tecnico: string }>(`/tickets/${id}/dispatch`, { tech_id: techId, texto });
-export const assignTicket = (id: number, tecnico?: string) => post<ApiTicket>(`/tickets/${id}/assign`, { tecnico: tecnico || "" }, "PUT");
-export const commentTicket = (id: number, body: string, interno = false) =>
-  post<ApiTicketComment>(`/tickets/${id}/comment`, { body, interno });
 
 // ---- Base de conhecimento (KB) ----
 export interface ApiKbArticle {

@@ -1,30 +1,41 @@
 package messaging
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestSetorEfetivo(t *testing.T) {
+func TestSetoresPermitidos(t *testing.T) {
+	central := [][]string{{"Agendamento", "Saúde Mental", "MAC", "Recepção"}}
 	cases := []struct {
-		nome                             string
-		papel, setorUsuario, setorPedido string
-		rotear                           bool
-		want                             string
+		nome         string
+		papel, setor string
+		rotear       bool
+		grupos       [][]string
+		want         string // setores permitidos juntados por "," ; "<tudo>" = nil
 	}{
-		// Roteamento ligado: atendente é preso ao próprio setor.
-		{"atendente forçado ao setor", "atendente", "Saúde", "", true, "Saúde"},
-		{"atendente não burla pedindo outro setor", "atendente", "Saúde", "Tributos", true, "Saúde"},
-		// Atendente sem setor definido: vê tudo (não trava acesso).
-		{"atendente sem setor vê o que pedir", "atendente", "", "Tributos", true, "Tributos"},
-		{"atendente sem setor vê tudo", "atendente", "", "", true, ""},
-		// Roteamento desligado: filtro livre.
-		{"roteamento off: atendente filtra livre", "atendente", "Saúde", "Tributos", false, "Tributos"},
-		// Gestão nunca é forçada.
-		{"admin filtra livre", "admin", "Saúde", "Tributos", true, "Tributos"},
-		{"supervisor vê tudo", "supervisor", "Saúde", "", true, ""},
+		// Roteamento ligado, sem grupo: atendente isolado no próprio setor.
+		{"atendente isolado", "atendente", "Unidade A", true, central, "Unidade A"},
+		// Atendente num setor de um grupo: vê todos os setores do grupo.
+		{"atendente vê o grupo", "atendente", "MAC", true, central, "Agendamento,Saúde Mental,MAC,Recepção"},
+		// Atendente sem setor não recebe acesso implícito.
+		{"atendente sem setor", "atendente", "", true, central, ""},
+		// Roteamento desligado: vê tudo.
+		{"roteamento off", "atendente", "Unidade A", false, central, "<tudo>"},
+		// Gestão nunca é restringida.
+		{"admin vê tudo", "admin", "MAC", true, central, "<tudo>"},
+		{"supervisor vê tudo", "supervisor", "Unidade A", true, central, "<tudo>"},
 	}
 	for _, tc := range cases {
-		if got := setorEfetivo(tc.papel, tc.setorUsuario, tc.setorPedido, tc.rotear); got != tc.want {
-			t.Errorf("%s: setorEfetivo(%q,%q,%q,%v) = %q, quer %q",
-				tc.nome, tc.papel, tc.setorUsuario, tc.setorPedido, tc.rotear, got, tc.want)
+		got := setoresPermitidos(tc.papel, tc.setor, tc.rotear, tc.grupos)
+		var s string
+		if got == nil {
+			s = "<tudo>"
+		} else {
+			s = strings.Join(got, ",")
+		}
+		if s != tc.want {
+			t.Errorf("%s: setoresPermitidos(%q,%q,%v) = %q, quer %q", tc.nome, tc.papel, tc.setor, tc.rotear, s, tc.want)
 		}
 	}
 }

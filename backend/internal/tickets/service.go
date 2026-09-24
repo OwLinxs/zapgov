@@ -135,6 +135,10 @@ func (s *Service) GetByConversation(ctx context.Context, convID int64) (*Ticket,
 	return s.repo.GetByConversation(ctx, convID)
 }
 
+func (s *Service) GetByNumero(ctx context.Context, numero int) (*Ticket, error) {
+	return s.repo.GetByNumero(ctx, numero)
+}
+
 func (s *Service) Comments(ctx context.Context, id int64) ([]Comment, error) {
 	return s.repo.Comments(ctx, id)
 }
@@ -142,6 +146,10 @@ func (s *Service) Comments(ctx context.Context, id int64) ([]Comment, error) {
 func (s *Service) AddComment(ctx context.Context, id int64, autor, body string, interno bool) (*Comment, error) {
 	if body == "" {
 		return nil, fmt.Errorf("comentário vazio")
+	}
+	// Anti-IDOR: confirma que o chamado é do tenant do contexto (Get é tenant-scoped).
+	if _, err := s.repo.Get(ctx, id); err != nil {
+		return nil, fmt.Errorf("chamado não encontrado")
 	}
 	return s.repo.AddComment(ctx, id, autor, body, interno)
 }

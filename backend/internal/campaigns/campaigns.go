@@ -13,16 +13,18 @@ import (
 )
 
 type Campaign struct {
-	ID          int64      `json:"id"`
-	TenantID    int64      `json:"-"`
-	Template    string     `json:"template"`
-	Language    string     `json:"language"`
-	Setor       string     `json:"setor"`
-	Total       int        `json:"total"`
-	Enviadas    int        `json:"enviadas"`
-	Entregues   int        `json:"entregues"`
-	Lidas       int        `json:"lidas"`
-	Falhas      int        `json:"falhas"`
+	Puladas       int        `json:"puladas"`
+	Revisao       int        `json:"revisao"`
+	ID            int64      `json:"id"`
+	TenantID      int64      `json:"-"`
+	Template      string     `json:"template"`
+	Language      string     `json:"language"`
+	Setor         string     `json:"setor"`
+	Total         int        `json:"total"`
+	Enviadas      int        `json:"enviadas"`
+	Entregues     int        `json:"entregues"`
+	Lidas         int        `json:"lidas"`
+	Falhas        int        `json:"falhas"`
 	Status        string     `json:"status"`
 	Operador      string     `json:"operador"`
 	Personalizado bool       `json:"personalizado"`
@@ -38,13 +40,13 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-const cols = `id, template, language, setor, total, enviadas, entregues, lidas, falhas, status, operador, personalizado, scheduled_at, criado_em`
+const cols = `id, template, language, setor, total, enviadas, entregues, lidas, falhas, status, operador, personalizado, scheduled_at, criado_em, puladas, revisao`
 
 func scan(row pgx.CollectableRow) (Campaign, error) {
 	var c Campaign
 	err := row.Scan(&c.ID, &c.Template, &c.Language, &c.Setor, &c.Total,
 		&c.Enviadas, &c.Entregues, &c.Lidas, &c.Falhas, &c.Status, &c.Operador,
-		&c.Personalizado, &c.ScheduledAt, &c.CriadoEm)
+		&c.Personalizado, &c.ScheduledAt, &c.CriadoEm, &c.Puladas, &c.Revisao)
 	return c, err
 }
 
@@ -243,7 +245,7 @@ func (r *Repository) DueScheduled(ctx context.Context, limit int) ([]Campaign, e
 		var c Campaign
 		err := row.Scan(&c.ID, &c.Template, &c.Language, &c.Setor, &c.Total,
 			&c.Enviadas, &c.Entregues, &c.Lidas, &c.Falhas, &c.Status, &c.Operador,
-			&c.Personalizado, &c.ScheduledAt, &c.CriadoEm, &c.TenantID)
+			&c.Personalizado, &c.ScheduledAt, &c.CriadoEm, &c.Puladas, &c.Revisao, &c.TenantID)
 		return c, err
 	})
 }

@@ -2,6 +2,8 @@ package messaging
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 )
 
@@ -94,3 +96,15 @@ type MessageProvider interface {
 	ParseWebhook(body []byte) ([]IncomingMessage, []StatusUpdate, []ReactionUpdate, error)
 	VerifySignature(body []byte, signatureHeader string) bool
 }
+
+// ProviderError means the remote server explicitly rejected the request.
+type ProviderError struct {
+	Status  int
+	Message string
+}
+
+func (e *ProviderError) Error() string {
+	return fmt.Sprintf("Meta API recusou (%d): %s", e.Status, e.Message)
+}
+
+var ErrProviderUnavailable = errors.New("WhatsApp não configurado para este órgão")

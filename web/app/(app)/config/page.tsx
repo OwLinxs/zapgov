@@ -16,6 +16,7 @@ import {
   listWebhooks, createWebhook, deleteWebhook,
   listUsers, createUser, updateUser, resetUserPassword,
   listDepartments,
+  getVisibilidade, setVisibilidade,
   listQuickReplies, createQuickReply, deleteQuickReply,
   type SettingsOrg, type SettingsMeta, type SettingsBilling, type SettingsWebhook,
   type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type SettingsLembrete, type SettingsPesquisa,
@@ -240,6 +241,82 @@ function FeriadosCalendar({ value, onChange, disabled }: { value: string[]; onCh
   );
 }
 
+// VisibilidadeSetores: monta grupos de setores que compartilham as conversas.
+// Setor fora de grupo fica isolado. Só aparece com "separar por departamento" ligado.
+function VisibilidadeSetores() {
+  const toast = useToast();
+  const [setores, setSetores] = useState<string[]>([]);
+  const [grupos, setGrupos] = useState<string[][]>([]);
+  const [saving, setSaving] = useState(false);
+  const [carregou, setCarregou] = useState(false);
+
+  useEffect(() => {
+    Promise.all([listDepartments().catch(() => []), getVisibilidade().catch(() => [])])
+      .then(([ds, gs]) => { setSetores(ds.map((d) => d.nome)); setGrupos(gs); setCarregou(true); });
+  }, []);
+
+  const emGrupo = new Set(grupos.flat());
+
+  async function salvar() {
+    setSaving(true);
+    try {
+      // descarta grupos com menos de 2 setores (não fazem sentido).
+      const limpos = grupos.map((g) => Array.from(new Set(g))).filter((g) => g.length >= 2);
+      await setVisibilidade(limpos);
+      setGrupos(limpos);
+      toast({ type: "success", title: "Grupos salvos", message: "Os atendentes precisam recarregar o app para ver a mudança." });
+    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    finally { setSaving(false); }
+  }
+
+  if (!carregou) return <Skel h={160} />;
+
+  return (
+    <div className="card card-pad col" style={{ gap: 14, marginTop: 16 }}>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Setores que se enxergam</div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+          Setores no mesmo grupo compartilham as conversas entre si. Setor fora de qualquer grupo fica <b>isolado</b> (o atendente vê só o dele). Vale para atendentes — admin e supervisor veem tudo.
+        </div>
+      </div>
+
+      {grupos.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>Nenhum grupo — cada setor fica isolado.</div>}
+
+      {grupos.map((grp, i) => {
+        const paraAdd = setores.filter((s) => !grp.includes(s) && !emGrupo.has(s));
+        return (
+          <div key={i} className="col" style={{ gap: 8, border: "1px solid var(--border-subtle)", borderRadius: 10, padding: 12 }}>
+            <div className="row between center">
+              <span className="field-label" style={{ fontSize: 11 }}>Grupo {i + 1}</span>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Remover grupo" onClick={() => setGrupos((g) => g.filter((_, k) => k !== i))}><Icon name="trash" size={13} /></button>
+            </div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {grp.length === 0 && <span className="muted" style={{ fontSize: 12 }}>Sem setores ainda.</span>}
+              {grp.map((s) => (
+                <span key={s} className="tag" style={{ fontSize: 12 }}>
+                  {s}
+                  <span style={{ cursor: "pointer", marginLeft: 5, fontWeight: 700 }} onClick={() => setGrupos((g) => g.map((x, k) => (k === i ? x.filter((y) => y !== s) : x)))}>✕</span>
+                </span>
+              ))}
+            </div>
+            {paraAdd.length > 0 && (
+              <select className="select" style={{ maxWidth: 240 }} value="" onChange={(e) => { const v = e.target.value; if (v) setGrupos((g) => g.map((x, k) => (k === i ? [...x, v] : x))); }}>
+                <option value="">+ Adicionar setor…</option>
+                {paraAdd.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="row center" style={{ gap: 10 }}>
+        <Button variant="secondary" size="sm" icon="plus" onClick={() => setGrupos((g) => [...g, []])}>Novo grupo</Button>
+        <Button variant="primary" size="sm" icon="check" aria-disabled={saving} onClick={salvar}>{saving ? "Salvando…" : "Salvar grupos"}</Button>
+      </div>
+    </div>
+  );
+}
+
 function AtendimentoSection() {
   const toast = useToast();
   const [enc, setEnc] = useState<SettingsEncerramento | null>(null);
@@ -405,6 +482,8 @@ function AtendimentoSection() {
           />
         </Field>
       </div>
+
+      {rot.por_setor && <VisibilidadeSetores />}
 
       {/* Assinatura do atendente */}
       <div className="card card-pad col" style={{ gap: 12, marginTop: 16 }}>
@@ -583,17 +662,17 @@ function AtendimentoSection() {
 
         {lemList.length > 0 && (
           <div className="col" style={{ gap: 6 }}>
-            <span className="field-label">Lembretes agendados ({lemList.length})</span>
+            <span className="field-label">Lembretes e pendências ({lemList.length})</span>
             <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--border-subtle)", borderRadius: 9 }}>
               {lemList.map((r) => (
                 <div key={r.id} className="row center between" style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)", fontSize: 12.5 }}>
                   <div className="col" style={{ gap: 0 }}>
-                    <span className="strong">{r.nome || r.phone}</span>
+                    <span className="strong">{r.nome || r.phone} · {r.status === "revisao" ? "Conferir envio antes de reenviar" : r.status}</span>
                     <span className="faint" style={{ fontSize: 11 }}>
                       consulta {new Date(r.data_evento).toLocaleDateString("pt-BR")} · lembrete {new Date(r.enviar_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
-                  <button className="btn btn-ghost btn-icon btn-sm" title="Cancelar lembrete" onClick={() => cancelarLembrete(r.id)}>
+                  <button disabled={r.status !== "pendente"} className="btn btn-ghost btn-icon btn-sm" title="Cancelar lembrete" onClick={() => cancelarLembrete(r.id)}>
                     <Icon name="x" size={14} />
                   </button>
                 </div>
@@ -895,7 +974,7 @@ function EditarUsuarioModal({ user, deps, onClose, onSaved }: { user: ApiUser | 
   async function salvar() {
     if (!user || !f.nome || !f.email) return;
     if (novaSenha && novaSenha.length < 6) {
-      toast({ type: "error", title: "Senha curta", message: "A senha provisória precisa ter ao menos 6 caracteres" });
+      toast({ type: "error", title: "Senha curta", message: "A senha provisória precisa ter ao menos 8 caracteres" });
       return;
     }
     setSaving(true);

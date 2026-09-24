@@ -1,6 +1,13 @@
 package templates
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"regexp"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+// templateIDRe valida o id do template da Meta (numérico) antes de compor a URL.
+var templateIDRe = regexp.MustCompile(`^\d+$`)
 
 // Handler expõe a sincronização de templates da WABA.
 type Handler struct {
@@ -127,6 +134,27 @@ func (h *Handler) edit(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&req); err != nil || req.ID == "" || req.Corpo == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id e corpo são obrigatórios"})
+	}
+	// Anti-IDOR/confused-deputy: o id vai direto na URL da Graph API. Exige que
+	// seja numérico E que pertença a um template DESTE tenant (List é tenant-scoped
+	// pelas credenciais do contexto) — senão daria pra editar objeto de outra WABA
+	// alcançável pelo token de fallback.
+	if !templateIDRe.MatchString(req.ID) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id de template inválido"})
+	}
+	tpls, err := h.client.List(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"error": err.Error()})
+	}
+	achou := false
+	for _, t := range tpls {
+		if t.ID == req.ID {
+			achou = true
+			break
+		}
+	}
+	if !achou {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "template não pertence a este órgão"})
 	}
 	if err := h.client.Edit(c.Context(), EditRequest{
 		ID: req.ID, Corpo: req.Corpo, Header: req.Header, Footer: req.Footer, Botoes: req.Botoes, Exemplos: req.Exemplos,

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -58,6 +59,16 @@ func Load() (*Config, error) {
 
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL é obrigatória")
+	}
+	if cfg.Env == "production" && (cfg.JWTSecret == "dev-secret-troque-em-producao" || len(cfg.JWTSecret) < 32) {
+		return nil, fmt.Errorf("JWT_SECRET deve ter ao menos 32 bytes e não pode ser o padrão em produção")
+	}
+	key := os.Getenv("META_CREDENTIALS_KEY")
+	if key != "" || cfg.Env == "production" {
+		decoded, err := hex.DecodeString(key)
+		if err != nil || len(decoded) != 32 {
+			return nil, fmt.Errorf("META_CREDENTIALS_KEY deve conter 64 caracteres hexadecimais")
+		}
 	}
 	return cfg, nil
 }

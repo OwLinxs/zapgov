@@ -6,13 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"zapgov/backend/internal/messaging"
 )
 
 var ErrNotFound = errors.New("tenant não encontrado")
@@ -40,13 +37,10 @@ type MetaCreds struct {
 
 type Repository struct {
 	pool *pgxpool.Pool
-	// cache de providers Meta por tenant (invalidado em SetCreds).
-	provMu    sync.RWMutex
-	provCache map[int64]messaging.MessageProvider
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, provCache: map[int64]messaging.MessageProvider{}}
+	return &Repository{pool: pool}
 }
 
 const cols = `id, nome, subdominio, plano, limite_mensal, ativo, modulos, criado_em`
@@ -98,7 +92,7 @@ func (r *Repository) IDBySubdomain(ctx context.Context, sub string) int64 {
 	var id int64
 	err := r.pool.QueryRow(ctx, `SELECT id FROM tenants WHERE subdominio = lower($1) AND ativo`, sub).Scan(&id)
 	if err != nil {
-		return 1
+		return 0
 	}
 	return id
 }
@@ -110,7 +104,7 @@ func (r *Repository) IDByPhoneNumberID(ctx context.Context, phoneNumberID string
 		return 0
 	}
 	var id int64
-	err := r.pool.QueryRow(ctx, `SELECT id FROM tenants WHERE wa_phone_number_id = $1`, phoneNumberID).Scan(&id)
+	err := r.pool.QueryRow(ctx, `SELECT id FROM tenants WHERE wa_phone_number_id = $1 AND ativo`, phoneNumberID).Scan(&id)
 	if err != nil {
 		return 0
 	}
@@ -122,9 +116,12 @@ func (r *Repository) Creds(ctx context.Context, tenantID int64) (MetaCreds, erro
 	var m MetaCreds
 	err := r.pool.QueryRow(ctx, `
 		SELECT wa_phone_number_id, wa_waba_id, wa_token, wa_app_secret, wa_api_version, webhook_verify_token
-		FROM tenants WHERE id = $1`, tenantID).
+		FROM tenants WHERE id = $1 AND ativo`, tenantID).
 		Scan(&m.PhoneNumberID, &m.WABAID, &m.Token, &m.AppSecret, &m.APIVersion, &m.WebhookVerifyToken)
-	return m, err
+	if err != nil {
+		return MetaCreds{}, err
+	}
+	return transformSecrets(tenantID, m, openSecret)
 }
 
 func (r *Repository) List(ctx context.Context) ([]Tenant, error) {
@@ -183,15 +180,17 @@ func (r *Repository) SetCreds(ctx context.Context, id int64, m MetaCreds) error 
 	if m.APIVersion == "" {
 		m.APIVersion = "v21.0"
 	}
-	_, err := r.pool.Exec(ctx, `
+	sealed, err := transformSecrets(id, m, sealSecret)
+	if err != nil {
+		return err
+	}
+	m = sealed
+	_, err = r.pool.Exec(ctx, `
 		UPDATE tenants SET
 			wa_phone_number_id = $2, wa_waba_id = $3, wa_token = $4,
 			wa_app_secret = $5, wa_api_version = $6, webhook_verify_token = $7
 		WHERE id = $1`,
 		id, m.PhoneNumberID, m.WABAID, m.Token, m.AppSecret, m.APIVersion, m.WebhookVerifyToken)
-	if err == nil {
-		r.invalidateProvider(id) // força reconstruir o provider com as novas creds
-	}
 	return err
 }
 
@@ -203,6 +202,7 @@ func (r *Repository) Modulos(ctx context.Context, id int64) map[string]bool {
 	if len(b) > 0 {
 		_ = json.Unmarshal(b, &m)
 	}
+	delete(m, "chamados")
 	return m
 }
 
@@ -211,6 +211,7 @@ func (r *Repository) SetModulos(ctx context.Context, id int64, m map[string]bool
 	if m == nil {
 		m = map[string]bool{}
 	}
+	delete(m, "chamados")
 	b, err := json.Marshal(m)
 	if err != nil {
 		return err

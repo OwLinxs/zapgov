@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((u) => {
         localStorage.setItem("zg-user", JSON.stringify(u));
         setUser(u);
+        if (u.must_change_password && location.pathname !== "/login") location.href = "/login";
       })
       .catch(() => { /* token inválido → AuthGate cuida do redirect */ });
   }, []);

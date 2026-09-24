@@ -31,6 +31,8 @@ func (h *Handler) Register(r fiber.Router, admin fiber.Handler) {
 	r.Put("/settings/assinatura", admin, h.putAssinatura)
 	r.Get("/settings/roteamento", h.getRoteamento)
 	r.Put("/settings/roteamento", admin, h.putRoteamento)
+	r.Get("/settings/visibilidade", h.getVisibilidade)
+	r.Put("/settings/visibilidade", admin, h.putVisibilidade)
 	r.Get("/settings/chatbot", h.getChatbot)
 	r.Put("/settings/chatbot", admin, h.putChatbot)
 	r.Get("/settings/lembrete", h.getLembrete)
@@ -142,6 +144,27 @@ func (h *Handler) putRoteamento(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
 	}
 	if err := h.repo.SetRoteamento(c.Context(), rt); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *Handler) getVisibilidade(c *fiber.Ctx) error {
+	g, err := h.repo.GetVisibilidade(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"grupos": g})
+}
+
+func (h *Handler) putVisibilidade(c *fiber.Ctx) error {
+	var body struct {
+		Grupos [][]string `json:"grupos"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	if err := h.repo.SetVisibilidade(c.Context(), body.Grupos); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"ok": true})

@@ -14,15 +14,16 @@ import (
 )
 
 type User struct {
-	ID         int64     `json:"id"`
-	TenantID   int64     `json:"-"`
-	Nome       string    `json:"nome"`
-	Email      string    `json:"email"`
-	Papel      string    `json:"papel"`
-	Setor      string    `json:"setor"`
-	Ativo      bool      `json:"ativo"`
-	MustChange bool      `json:"must_change_password"`
-	CriadoEm   time.Time `json:"criado_em"`
+	SessionVersion int64     `json:"-"`
+	ID             int64     `json:"id"`
+	TenantID       int64     `json:"-"`
+	Nome           string    `json:"nome"`
+	Email          string    `json:"email"`
+	Papel          string    `json:"papel"`
+	Setor          string    `json:"setor"`
+	Ativo          bool      `json:"ativo"`
+	MustChange     bool      `json:"must_change_password"`
+	CriadoEm       time.Time `json:"criado_em"`
 }
 
 type Repository struct{ pool *pgxpool.Pool }
@@ -35,9 +36,9 @@ func (r *Repository) byEmail(ctx context.Context, tenantID int64, email string) 
 	var u User
 	var hash string
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, tenant_id, nome, email, senha_hash, papel, setor, ativo, must_change_password, criado_em
-		FROM users WHERE tenant_id = $1 AND lower(email) = lower($2)`, tenantID, email).
-		Scan(&u.ID, &u.TenantID, &u.Nome, &u.Email, &hash, &u.Papel, &u.Setor, &u.Ativo, &u.MustChange, &u.CriadoEm)
+		SELECT id, tenant_id, nome, email, senha_hash, papel, setor, ativo, must_change_password, criado_em, session_version
+		FROM users WHERE tenant_id = $1 AND lower(email) = lower($2) AND EXISTS (SELECT 1 FROM tenants WHERE id = $1 AND ativo)`, tenantID, email).
+		Scan(&u.ID, &u.TenantID, &u.Nome, &u.Email, &hash, &u.Papel, &u.Setor, &u.Ativo, &u.MustChange, &u.CriadoEm, &u.SessionVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", nil
 	}
@@ -53,7 +54,7 @@ func (r *Repository) hashByID(ctx context.Context, id int64) (string, error) {
 
 // setPassword grava nova senha e limpa a flag de troca obrigatória.
 func (r *Repository) setPassword(ctx context.Context, id int64, hash string) error {
-	_, err := r.pool.Exec(ctx, `UPDATE users SET senha_hash = $2, must_change_password = false WHERE id = $1`, id, hash)
+	_, err := r.pool.Exec(ctx, `UPDATE users SET senha_hash = $2, must_change_password = false, session_version = session_version + 1 WHERE id = $1`, id, hash)
 	return err
 }
 
@@ -67,7 +68,7 @@ func (r *Repository) markMustChange(ctx context.Context, id int64) error {
 // no próximo login. Escopo ao tenant para impedir reset cross-tenant.
 func (r *Repository) adminSetPassword(ctx context.Context, id int64, hash string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET senha_hash = $2, must_change_password = true WHERE id = $1 AND tenant_id = $3`,
+		`UPDATE users SET senha_hash = $2, must_change_password = true, session_version = session_version + 1 WHERE id = $1 AND tenant_id = $3`,
 		id, hash, tenantctx.From(ctx))
 	return err
 }
@@ -126,4 +127,14 @@ func (r *Repository) countTenant(ctx context.Context, tenantID int64) (int, erro
 	var n int
 	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE tenant_id = $1`, tenantID).Scan(&n)
 	return n, err
+}
+
+// SessionUser reads live authorization; suspension applies to existing tokens too.
+func (r *Repository) SessionUser(ctx context.Context, tenantID, id int64) (*User, error) {
+	var u User
+	err := r.pool.QueryRow(ctx, `SELECT u.id, u.tenant_id, u.nome, u.email, u.papel, u.setor,
+ u.ativo, u.must_change_password, u.session_version FROM users u JOIN tenants t ON t.id = u.tenant_id
+ WHERE u.id = $1 AND u.tenant_id = $2 AND u.ativo AND t.ativo`, id, tenantID).
+		Scan(&u.ID, &u.TenantID, &u.Nome, &u.Email, &u.Papel, &u.Setor, &u.Ativo, &u.MustChange, &u.SessionVersion)
+	return &u, err
 }

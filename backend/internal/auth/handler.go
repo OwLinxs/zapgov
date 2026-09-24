@@ -89,10 +89,13 @@ func (h *Handler) resetPassword(c *fiber.Ctx) error {
 	var body struct {
 		Senha string `json:"senha"`
 	}
-	if err := c.BodyParser(&body); err != nil || len(body.Senha) < 6 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "senha provisória precisa ter ao menos 6 caracteres"})
+	if err := c.BodyParser(&body); err != nil || (len(body.Senha) < 8 || len(body.Senha) > 72) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "senha provisória precisa ter entre 8 e 72 bytes"})
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(body.Senha), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Senha), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "senha inválida"})
+	}
 	if err := h.repo.adminSetPassword(c.Context(), int64(id), string(hash)); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -111,7 +114,15 @@ func (h *Handler) changePassword(c *fiber.Ctx) error {
 	if err := h.svc.ChangePassword(c.Context(), u.UserID, body.SenhaAtual, body.NovaSenha); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"ok": true})
+	fresh, err := h.repo.SessionUser(c.Context(), u.TenantID, u.UserID)
+	if err != nil {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	}
+	token, err := h.svc.issue(fresh)
+	if err != nil {
+		return c.SendStatus(fiber.StatusInternalServerError)
+	}
+	return c.JSON(fiber.Map{"ok": true, "token": token})
 }
 
 func (h *Handler) login(c *fiber.Ctx) error {
@@ -139,7 +150,8 @@ func (h *Handler) me(c *fiber.Ctx) error {
 	u := UserFromCtx(c)
 	return c.JSON(fiber.Map{
 		"id": u.UserID, "nome": u.Nome, "email": u.Email, "papel": u.Papel,
-		"modulos": h.modulosDe(c.Context(), tenantctx.From(c.Context())),
+		"must_change_password": u.MustChange,
+		"modulos":              h.modulosDe(c.Context(), tenantctx.From(c.Context())),
 	})
 }
 
@@ -162,10 +174,16 @@ func (h *Handler) createUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil || body.Nome == "" || body.Email == "" || body.Senha == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "nome, e-mail e senha são obrigatórios"})
 	}
+	if len(body.Senha) < 8 || len(body.Senha) > 72 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "senha deve ter entre 8 e 72 bytes"})
+	}
 	if body.Papel == "" {
 		body.Papel = "atendente"
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(body.Senha), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Senha), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "senha inválida"})
+	}
 	u, err := h.repo.Create(c.Context(), tenantctx.From(c.Context()), body.Nome, body.Email, string(hash), body.Papel, body.Setor)
 	if err != nil {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})

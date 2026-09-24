@@ -89,6 +89,9 @@ func (p *Provider) Send(ctx context.Context, msg messaging.OutgoingMessage) (mes
 // postMessage serializa o payload, chama a Meta API e extrai o message id.
 // Compartilhado por Send (texto) e SendTemplate.
 func (p *Provider) postMessage(ctx context.Context, url string, payload any) (messaging.SendResult, error) {
+	if p.phoneNumberID == "" || p.token == "" {
+		return messaging.SendResult{}, messaging.ErrProviderUnavailable
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return messaging.SendResult{}, fmt.Errorf("marshal do payload: %w", err)
@@ -117,7 +120,7 @@ func (p *Provider) postMessage(ctx context.Context, url string, payload any) (me
 		if sr.Error != nil {
 			m = sr.Error.Message
 		}
-		return messaging.SendResult{}, fmt.Errorf("Meta API recusou (%d): %s", resp.StatusCode, m)
+		return messaging.SendResult{}, &messaging.ProviderError{Status: resp.StatusCode, Message: m}
 	}
 	if len(sr.Messages) == 0 {
 		return messaging.SendResult{}, fmt.Errorf("resposta sem message id: %s", string(body))
@@ -259,15 +262,15 @@ type webhookEnvelope struct {
 					Context   *struct {
 						ID string `json:"id"` // wa_message_id citado (reply do cidadão)
 					} `json:"context"`
-					Text      struct {
+					Text struct {
 						Body string `json:"body"`
 					} `json:"text"`
-					Image       *mediaObj `json:"image"`
-					Audio       *mediaObj `json:"audio"`
-					Video       *mediaObj `json:"video"`
-					Document    *mediaObj `json:"document"`
-					Sticker     *mediaObj `json:"sticker"`
-					Button      *struct {
+					Image    *mediaObj `json:"image"`
+					Audio    *mediaObj `json:"audio"`
+					Video    *mediaObj `json:"video"`
+					Document *mediaObj `json:"document"`
+					Sticker  *mediaObj `json:"sticker"`
+					Button   *struct {
 						Text    string `json:"text"`
 						Payload string `json:"payload"`
 					} `json:"button"`

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -28,23 +29,26 @@ func NewService(repo *Repository, secret string) *Service {
 
 // Claims do JWT: identidade + papel para RBAC + tenant para isolamento.
 type Claims struct {
-	UserID   int64  `json:"uid"`
-	TenantID int64  `json:"tid"`
-	Nome     string `json:"nome"`
-	Email    string `json:"email"`
-	Papel    string `json:"papel"`
-	Setor    string `json:"setor"`
+	SessionVersion int64  `json:"sv"`
+	MustChange     bool   `json:"-"`
+	UserID         int64  `json:"uid"`
+	TenantID       int64  `json:"tid"`
+	Nome           string `json:"nome"`
+	Email          string `json:"email"`
+	Papel          string `json:"papel"`
+	Setor          string `json:"setor"`
 	jwt.RegisteredClaims
 }
 
 func (s *Service) issue(u *User) (string, error) {
 	claims := Claims{
-		UserID:   u.ID,
-		TenantID: u.TenantID,
-		Nome:     u.Nome,
-		Email:    u.Email,
-		Papel:    u.Papel,
-		Setor:    u.Setor,
+		SessionVersion: u.SessionVersion,
+		UserID:         u.ID,
+		TenantID:       u.TenantID,
+		Nome:           u.Nome,
+		Email:          u.Email,
+		Papel:          u.Papel,
+		Setor:          u.Setor,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprint(u.ID),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -61,7 +65,7 @@ func (s *Service) parse(tok string) (*Claims, error) {
 			return nil, errors.New("método de assinatura inesperado")
 		}
 		return []byte(s.secret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 	return c, err
 }
 
@@ -83,8 +87,8 @@ func (s *Service) Login(ctx context.Context, tenantID int64, email, senha string
 
 // ChangePassword troca a senha do usuário após validar a senha atual.
 func (s *Service) ChangePassword(ctx context.Context, userID int64, atual, nova string) error {
-	if len(nova) < 8 {
-		return fmt.Errorf("a nova senha precisa de ao menos 8 caracteres")
+	if len(nova) < 8 || len(nova) > 72 {
+		return fmt.Errorf("a nova senha precisa ter entre 8 e 72 bytes")
 	}
 	hash, err := s.repo.hashByID(ctx, userID)
 	if err != nil {
@@ -102,25 +106,32 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, atual, nova 
 
 // EnsureSeedAdmin cria um admin padrão no tenant indicado se ele ainda não tiver
 // usuários. Usado tanto no bootstrap do tenant 1 quanto ao provisionar um novo.
-func (s *Service) EnsureSeedAdmin(ctx context.Context, tenantID int64, email, senha string) {
+func (s *Service) EnsureSeedAdmin(ctx context.Context, tenantID int64, email, senha string) error {
 	n, err := s.repo.countTenant(ctx, tenantID)
-	if err != nil || n > 0 {
-		return
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
 	}
 	if email == "" {
 		email = "admin@zapgov.local"
 	}
 	if senha == "" {
-		senha = "admin123"
+		senha = os.Getenv("SEED_ADMIN_PASSWORD")
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(senha), bcrypt.DefaultCost)
-	u, err := s.repo.Create(ctx, tenantID, "Administrador", email, string(hash), "admin", "")
+	if len(senha) < 12 || len(senha) > 72 {
+		return fmt.Errorf("configure SEED_ADMIN_PASSWORD com 12 a 72 bytes para criar o administrador inicial")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(senha), bcrypt.DefaultCost)
 	if err != nil {
-		log.Printf("auth: falha ao criar admin seed (tenant %d): %v", tenantID, err)
-		return
+		return err
 	}
-	_ = s.repo.markMustChange(ctx, u.ID) // exige troca no primeiro acesso
-	log.Printf("auth: admin seed criado (tenant %d) → %s / %s (TROCA OBRIGATÓRIA no 1º acesso)", tenantID, email, senha)
+	if _, err := s.repo.Create(ctx, tenantID, "Administrador", email, string(hash), "admin", ""); err != nil {
+		return err
+	}
+	log.Printf("auth: administrador inicial criado (tenant %d), troca obrigatória no primeiro acesso", tenantID)
+	return nil
 }
 
 // ---- Middlewares ----
@@ -132,15 +143,13 @@ func (s *Service) Required() fiber.Handler {
 		if !strings.HasPrefix(h, "Bearer ") {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "não autenticado"})
 		}
-		claims, err := s.parse(strings.TrimPrefix(h, "Bearer "))
+		claims, err := s.ValidateSession(c.Context(), strings.TrimPrefix(h, "Bearer "))
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "sessão inválida ou expirada"})
 		}
-		// Tokens emitidos antes do multi-tenant não têm tid → trata como tenant 1
-		// (plataforma), evitando tenant_id=0 (que quebra FK e some com os dados).
 		tid := claims.TenantID
-		if tid == 0 {
-			tid = 1
+		if claims.MustChange && c.Path() != "/auth/password" && c.Path() != "/auth/me" {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "troca de senha obrigatória", "must_change_password": true})
 		}
 		c.Locals("user", claims)
 		c.Locals("papel", claims.Papel) // atalhos p/ outros pacotes sem importar auth
@@ -183,30 +192,39 @@ func RequirePlatformAdmin() fiber.Handler {
 	}
 }
 
-// ValidToken diz se o JWT é válido (uso no SSE, que autentica por query param).
-func (s *Service) ValidToken(token string) bool {
-	if token == "" {
-		return false
-	}
-	_, err := s.parse(token)
-	return err == nil
-}
-
-// TenantFromToken valida o JWT e devolve o tenant do usuário (uso no SSE).
-// Tokens legados sem tid caem no tenant 1.
-func (s *Service) TenantFromToken(token string) (int64, bool) {
-	if token == "" {
-		return 0, false
-	}
+// ValidateSession checks current user/tenant status, revocation and permissions.
+func (s *Service) ValidateSession(ctx context.Context, token string) (*Claims, error) {
 	c, err := s.parse(token)
 	if err != nil {
+		return nil, err
+	}
+	if c.TenantID <= 0 || c.SessionVersion <= 0 {
+		return nil, ErrInvalid
+	}
+	u, err := s.repo.SessionUser(ctx, c.TenantID, c.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if !sessionMatches(c, u) {
+		return nil, ErrInvalid
+	}
+	c.Nome, c.Email, c.Papel, c.Setor = u.Nome, u.Email, u.Papel, u.Setor
+	c.MustChange = u.MustChange
+	return c, nil
+}
+
+func sessionMatches(c *Claims, u *User) bool {
+	return u != nil && u.Ativo && c.TenantID == u.TenantID && c.UserID == u.ID && c.SessionVersion == u.SessionVersion
+}
+
+func (s *Service) TenantFromToken(token string) (int64, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := s.ValidateSession(ctx, token)
+	if err != nil || c.MustChange {
 		return 0, false
 	}
-	tid := c.TenantID
-	if tid == 0 {
-		tid = 1
-	}
-	return tid, true
+	return c.TenantID, true
 }
 
 // UserFromCtx devolve o usuário autenticado da request.

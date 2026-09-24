@@ -3,6 +3,8 @@ import { IconName } from "@/lib/icons";
 
 // Fonte única de verdade para cor + ícone de status (mensagens, templates, tenants).
 export const STATUS: Record<string, { label: string; cls: string; icon: IconName | null }> = {
+  revisao: { label: "Conferir envio", cls: "badge-pending", icon: "alertCircle" },
+  enviando: { label: "Enviando", cls: "badge-pending", icon: "clock" },
   enviado: { label: "Enviado", cls: "badge-sent", icon: "check" },
   entregue: { label: "Entregue", cls: "badge-delivered", icon: "checkDouble" },
   lido: { label: "Lido", cls: "badge-read", icon: "checkDouble" },

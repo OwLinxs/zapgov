@@ -40,6 +40,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redisdata:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -58,9 +61,10 @@ services:
     environment:
       DATABASE_URL: postgres://zapgov:${DB_PASSWORD}@postgres:5432/zapgov?sslmode=disable
       REDIS_ADDR: redis:6379
+      APP_ENV: production
       CORS_ORIGINS: ${APP_ORIGIN:?defina APP_ORIGIN no .env}
     ports:
-      - "8080:8080" # só o proxy/DMZ acessa (firewall bloqueia internet)
+      - "${API_BIND_IP:?defina API_BIND_IP com o IP interno ou 127.0.0.1}:8080:8080" # só o proxy/DMZ acessa (firewall bloqueia internet)
 
   worker:
     build: ./backend
@@ -74,6 +78,8 @@ services:
     environment:
       DATABASE_URL: postgres://zapgov:${DB_PASSWORD}@postgres:5432/zapgov?sslmode=disable
       REDIS_ADDR: redis:6379
+      APP_ENV: production
 
 volumes:
   pgdata:
+  redisdata:

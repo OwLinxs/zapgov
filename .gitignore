@@ -8,6 +8,7 @@
 !/Makefile
 !/.gitignore
 !/LICENSE.md
+!/.github/
 
 # Segredos — nunca versionar (mesmo dentro das pastas acima)
 backend/.env

@@ -49,6 +49,8 @@ Arquitetura na prefeitura:
    ```
    DB_PASSWORD=<senha forte do banco>
    APP_ORIGIN=https://app.SEU-DOMINIO
+   API_URL=https://api.SEU-DOMINIO
+   API_BIND_IP=<IP privado do servidor acessível pelo proxy>
    ```
 5. Subir:
    ```bash
@@ -79,6 +81,8 @@ Arquitetura na prefeitura:
 ```
 # Banco (host/senha são injetados pelo compose; não precisa DATABASE_URL aqui)
 JWT_SECRET=<openssl rand -hex 32>
+META_CREDENTIALS_KEY=<outro openssl rand -hex 32; manter backup>
+SEED_ADMIN_PASSWORD=<senha inicial de 12 a 72 bytes, para instalação nova>
 APP_ENV=production
 LOG_LEVEL=info
 
@@ -139,3 +143,9 @@ App Dashboard → WhatsApp → Configuration → Webhook:
 - [ ] Portas 8080/3000 só acessíveis pelo proxy (firewall).
 - [ ] TLS válido nos dois hosts.
 - [ ] Backup diário testado (restauração).
+
+## Atualização de instalações existentes
+
+Leia [UPGRADE.md](UPGRADE.md) antes de implantar esta versão. O administrador
+inicial usa `admin@zapgov.local` e a senha configurada em `SEED_ADMIN_PASSWORD`;
+não há senha padrão. Redis usa volume persistente e AOF.

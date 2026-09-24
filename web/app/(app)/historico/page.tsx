@@ -18,7 +18,7 @@ import { SETORES, SETOR_COR } from "@/lib/data";
 import { listCampaigns, exportCampaignsCSV, cancelCampaign, type ApiCampaign } from "@/lib/api";
 import { IconName } from "@/lib/icons";
 
-const STATUS_OPTS = ["Todos", "enviado", "enviando", "agendado", "cancelado", "falhou"];
+const STATUS_OPTS = ["Todos", "enviado", "enviando", "agendado", "cancelado", "falhou", "revisao"];
 
 // status de campanha → status visual do StatusBadge
 function vis(s: string): string {
@@ -252,7 +252,7 @@ export default function HistoricoPage() {
                           {isOpen && (
                             <tr>
                               <td colSpan={10} style={{ padding: 0, background: "var(--bg-sunken)" }}>
-                                <div style={{ padding: "18px 22px", display: "grid", gridTemplateColumns: "repeat(5, 1fr) auto", gap: 24, alignItems: "center" }}>
+                                <div style={{ padding: "18px 22px", display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr)) auto", gap: 24, alignItems: "center" }}>
                                   {(
                                     [
                                       ["Total", d.total, "var(--text-primary)"],
@@ -260,6 +260,8 @@ export default function HistoricoPage() {
                                       ["Entregues", d.entregues, "var(--st-read)"],
                                       ["Lidas", d.lidas, "var(--wa)"],
                                       ["Falhas", d.falhas, "var(--st-failed)"],
+                                      ["Descadastrados", d.puladas || 0, "var(--text-secondary)"],
+                                      ["Conferir envio", d.revisao || 0, "var(--st-failed)"],
                                     ] as [string, number, string][]
                                   ).map((s, i) => (
                                     <div key={i} className="stat-inline">
@@ -270,6 +272,9 @@ export default function HistoricoPage() {
                                     </div>
                                   ))}
                                   <Donut value={d.enviadas ? (d.entregues / d.enviadas) * 100 : 0} size={72} stroke={8} color="var(--st-read)" label="entrega" />
+                                  {d.revisao > 0 && <p style={{ gridColumn: "1 / -1", fontSize: 12 }}>
+                                    Não foi possível confirmar todos os envios. Confira o histórico e a entrega no WhatsApp antes de enviar novamente.
+                                  </p>}
                                   {d.status === "agendado" && (
                                     <Button
                                       variant="danger"

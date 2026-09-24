@@ -40,11 +40,15 @@ func (r *Repository) Create(ctx context.Context, phone, nome string, dataEvento 
 // Due devolve os lembretes pendentes que já venceram (todos os tenants —
 // o agendador injeta o tenant de cada um no envio).
 func (r *Repository) Due(ctx context.Context, limit int) ([]Reminder, error) {
+	_, err := r.pool.Exec(ctx, `UPDATE reminders SET status='revisao',updated_at=now() WHERE status='enviando' AND updated_at<now()-interval '5 minutes'`)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, tenant_id, phone, nome, data_evento, enviar_em, status
-		FROM reminders
-		WHERE status = 'pendente' AND enviar_em <= now()
-		ORDER BY enviar_em LIMIT $1`, limit)
+		WITH due AS (SELECT id FROM reminders WHERE status='pendente' AND enviar_em<=now()
+ ORDER BY enviar_em FOR UPDATE SKIP LOCKED LIMIT $1)
+ UPDATE reminders r SET status='enviando',updated_at=now() FROM due WHERE r.id=due.id
+ RETURNING r.id,r.tenant_id,r.phone,r.nome,r.data_evento,r.enviar_em,r.status`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +64,7 @@ func scan(row pgx.CollectableRow) (Reminder, error) {
 
 // MarkStatus atualiza o resultado do envio.
 func (r *Repository) MarkStatus(ctx context.Context, id int64, status string) error {
-	_, err := r.pool.Exec(ctx, `UPDATE reminders SET status = $2 WHERE id = $1`, id, status)
+	_, err := r.pool.Exec(ctx, `UPDATE reminders SET status = $2,updated_at=now() WHERE id = $1 AND tenant_id=$3`, id, status, tenantctx.From(ctx))
 	return err
 }
 
@@ -69,7 +73,7 @@ func (r *Repository) ListPending(ctx context.Context) ([]Reminder, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, tenant_id, phone, nome, data_evento, enviar_em, status
 		FROM reminders
-		WHERE tenant_id = $1 AND status = 'pendente'
+		WHERE tenant_id = $1 AND status IN ('pendente','enviando','revisao','falhou')
 		ORDER BY enviar_em LIMIT 200`, tenantctx.From(ctx))
 	if err != nil {
 		return nil, err

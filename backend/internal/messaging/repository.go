@@ -188,15 +188,29 @@ func (r *Repository) EnsureConversation(ctx context.Context, phone, name string)
 	return id, err
 }
 
-// ensureOpenSession devolve a sessão aberta da conversa, criando uma se não houver.
+// ConversationBelongs diz se a conversa pertence ao tenant do contexto. Barreira
+// contra IDOR: o id vem da URL e conversations.id é uma sequência GLOBAL entre
+// tenants, então toda escrita por id precisa confirmar a posse antes.
+func (r *Repository) ConversationBelongs(ctx context.Context, convID int64) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM conversations WHERE id = $1 AND tenant_id = $2)`,
+		convID, tenantctx.From(ctx)).Scan(&ok)
+	return ok, err
+}
+
+// ensureOpenSession devolve a sessão aberta da conversa (DO tenant do contexto),
+// criando uma se não houver. O filtro por tenant impede reaproveitar/gravar em
+// sessão de conversa de outro tenant.
 func (r *Repository) ensureOpenSession(ctx context.Context, convID int64) (int64, error) {
+	tid := tenantctx.From(ctx)
 	var id int64
 	err := r.pool.QueryRow(ctx,
-		`SELECT id FROM sessions WHERE conversation_id = $1 AND encerrada_em IS NULL ORDER BY id DESC LIMIT 1`,
-		convID).Scan(&id)
+		`SELECT id FROM sessions WHERE conversation_id = $1 AND tenant_id = $2 AND encerrada_em IS NULL ORDER BY id DESC LIMIT 1`,
+		convID, tid).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = r.pool.QueryRow(ctx,
-			`INSERT INTO sessions (tenant_id, conversation_id) VALUES ($2, $1) RETURNING id`, convID, tenantctx.From(ctx)).Scan(&id)
+			`INSERT INTO sessions (tenant_id, conversation_id) VALUES ($2, $1) RETURNING id`, convID, tid).Scan(&id)
 	}
 	return id, err
 }
@@ -255,7 +269,12 @@ func (r *Repository) InsertInbound(ctx context.Context, convID int64, waMessageI
 	if err != nil {
 		return false, err
 	}
-	tag, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO messages (tenant_id, conversation_id, session_id, wa_message_id, direction, body, status, created_at,
 		                      media_type, media_id, media_mime, media_name, reply_to)
 		VALUES ($10, $1, $2, $3, 'in', $4, 'received', $5, $6, $7, $8, $9, $11)
@@ -267,7 +286,7 @@ func (r *Repository) InsertInbound(ctx context.Context, convID int64, waMessageI
 	}
 	inserted := tag.RowsAffected() > 0
 	if inserted {
-		_, err = r.pool.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			UPDATE conversations
 			SET unread_count = unread_count + 1,
 			    last_msg_at = $2::timestamptz,
@@ -278,7 +297,10 @@ func (r *Repository) InsertInbound(ctx context.Context, convID int64, waMessageI
 			convID, ts,
 		)
 	}
-	return inserted, err
+	if err != nil {
+		return false, err
+	}
+	return inserted, tx.Commit(ctx)
 }
 
 // OptOut descadastra um telefone: marca a conversa e registra na lista canônica.
@@ -331,35 +353,16 @@ func (r *Repository) WindowOpen(ctx context.Context, phone string) (bool, error)
 	return exp != nil && exp.After(time.Now()), nil
 }
 
-// UpdateStatus avança o status de uma mensagem enviada (por wa_message_id),
-// guardando o motivo quando for falha. Devolve o campaign_id da mensagem (0 se
-// não é de campanha) e o status ANTERIOR — usados pelos contadores do disparo.
-func (r *Repository) UpdateStatus(ctx context.Context, waMessageID, status, errText string) (campaignID int64, oldStatus string, err error) {
-	err = r.pool.QueryRow(ctx, `
-		UPDATE messages m
-		SET status = $2, error = COALESCE(NULLIF($4,''), m.error), updated_at = now()
-		FROM (SELECT id, status, campaign_id FROM messages
-		      WHERE wa_message_id = $1 AND direction = 'out' AND tenant_id = $3) o
-		WHERE m.id = o.id
-		RETURNING COALESCE(o.campaign_id, 0), o.status`,
-		waMessageID, status, tenantctx.From(ctx), errText,
-	).Scan(&campaignID, &oldStatus)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, "", nil // mensagem desconhecida (ex.: enviada antes da migração)
-	}
-	return campaignID, oldStatus, err
-}
-
 // ListConversations devolve as conversas (filtro opcional por setor/status),
 // ordenadas pela atividade mais recente, com a prévia da última mensagem.
-func (r *Repository) ListConversations(ctx context.Context, limit int, setor, status, q string, soAtendimento bool) ([]Conversation, error) {
+func (r *Repository) ListConversations(ctx context.Context, limit int, setores []string, status, q string, soAtendimento bool) ([]Conversation, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.id, c.contact_phone, c.contact_name, c.unread_count,
 		       COALESCE(m.body, '') AS last_message,
 		       c.last_msg_at, c.window_expires_at, c.setor, c.dados, c.status, c.atendente, c.opt_out, c.queued_at,
 		       COALESCE((SELECT json_agg(json_build_object('id', l.id, 'nome', l.nome, 'cor', l.cor) ORDER BY l.nome)
-		                 FROM conversation_labels cl JOIN labels l ON l.id = cl.label_id
-		                 WHERE cl.conversation_id = c.id), '[]') AS labels
+		                 FROM conversation_labels cl JOIN labels l ON l.id = cl.label_id AND l.tenant_id = c.tenant_id
+		                 WHERE cl.conversation_id = c.id AND cl.tenant_id = c.tenant_id), '[]') AS labels
 		FROM conversations c
 		LEFT JOIN LATERAL (
 			SELECT body FROM messages
@@ -367,7 +370,7 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 			ORDER BY created_at DESC
 			LIMIT 1
 		) m ON true
-		WHERE c.tenant_id = $5 AND ($2 = '' OR c.setor = $2)
+		WHERE c.tenant_id = $5 AND ($7::boolean OR c.setor = ANY($2))
 		  -- status: '' = todos; 'ativas' = não-resolvidas; senão igual.
 		  AND ($3 = '' OR ($3 = 'ativas' AND c.status <> 'resolvido') OR c.status = $3)
 		  AND ($4 = false OR c.status <> '')
@@ -382,7 +385,7 @@ func (r *Repository) ListConversations(ctx context.Context, limit int, setor, st
 		                  WHERE mm.conversation_id = c.id AND mm.body ILIKE '%'||$6||'%'))
 		ORDER BY c.last_msg_at DESC
 		LIMIT $1`,
-		limit, setor, status, soAtendimento, tenantctx.From(ctx), q,
+		limit, setores, status, soAtendimento, tenantctx.From(ctx), q, setores == nil,
 	)
 	if err != nil {
 		return nil, err

@@ -1,12 +1,16 @@
 // Package flow é o motor de chatbot por grafo (blocos interligados, estilo n8n).
 package flow
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
 
 // Node é um bloco do fluxo. Data é específico do tipo (parseado sob demanda).
 type Node struct {
 	ID       string          `json:"id"`
-	Type     string          `json:"type"` // start|message|menu|input|condition|action|handoff|end
+	Type     string          `json:"type"` // start|message|menu|input|condition|action|api|handoff|end
 	Data     json.RawMessage `json:"data"`
 	Position struct {
 		X float64 `json:"x"`
@@ -31,6 +35,29 @@ func Parse(raw []byte) (*Graph, error) {
 	var g Graph
 	if err := json.Unmarshal(raw, &g); err != nil {
 		return nil, err
+	}
+	for _, n := range g.Nodes {
+		if n.Type != "api" {
+			continue
+		}
+		var d apiData
+		if json.Unmarshal(n.Data, &d) != nil || d.Integration != "sige_ti" {
+			return nil, fmt.Errorf("Chamar API: integração inválida")
+		}
+		var body map[string]string
+		if len(d.Body) > 64*1024 || json.Unmarshal([]byte(d.Body), &body) != nil || body == nil || strings.TrimSpace(body["defeito_relatado"]) == "" {
+			return nil, fmt.Errorf("Chamar API: informe um objeto JSON com valores de texto e defeito_relatado")
+		}
+		used := map[string]bool{}
+		for _, target := range d.Response {
+			if target == "" {
+				continue
+			}
+			if !responseVariable.MatchString(target) || strings.HasPrefix(target, "_") || target == "api_erro" || target == "api_http_status" || used[target] {
+				return nil, fmt.Errorf("Chamar API: variáveis de retorno inválidas ou repetidas")
+			}
+			used[target] = true
+		}
 	}
 	return &g, nil
 }
@@ -96,7 +123,7 @@ type conditionData struct {
 }
 
 type actionData struct {
-	Kind       string `json:"kind"`       // assign_department | abrir_chamado
+	Kind       string `json:"kind"` // assign_department | abrir_chamado
 	Department string `json:"department"`
 	Prioridade string `json:"prioridade"` // p/ abrir_chamado (baixa|media|alta|critica)
 }

@@ -9,10 +9,10 @@ import (
 type Handler struct {
 	repo *Repository
 	// seedAdmin cria o admin inicial de um tenant recém-provisionado.
-	seedAdmin func(ctx context.Context, tenantID int64, email, senha string)
+	seedAdmin func(ctx context.Context, tenantID int64, email, senha string) error
 }
 
-func NewHandler(repo *Repository, seedAdmin func(ctx context.Context, tenantID int64, email, senha string)) *Handler {
+func NewHandler(repo *Repository, seedAdmin func(ctx context.Context, tenantID int64, email, senha string) error) *Handler {
 	return &Handler{repo: repo, seedAdmin: seedAdmin}
 }
 
@@ -61,13 +61,18 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil || body.Nome == "" || body.Subdominio == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "nome e subdomínio são obrigatórios"})
 	}
+	if body.AdminEmail == "" || len(body.AdminSenha) < 12 || len(body.AdminSenha) > 72 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "e-mail e senha inicial de 12 a 72 bytes são obrigatórios"})
+	}
 	t, err := h.repo.Create(c.Context(), body.Nome, body.Subdominio, body.Plano)
 	if err != nil {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
 	}
 	// Seed do admin inicial do novo tenant.
 	if h.seedAdmin != nil {
-		h.seedAdmin(c.Context(), t.ID, body.AdminEmail, body.AdminSenha)
+		if err := h.seedAdmin(c.Context(), t.ID, body.AdminEmail, body.AdminSenha); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "órgão criado, mas não foi possível provisionar administrador; contate a operação", "tenant_id": t.ID})
+		}
 	}
 	return c.Status(fiber.StatusCreated).JSON(t)
 }
@@ -122,7 +127,7 @@ func (h *Handler) setCreds(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
 
-func (h *Handler) suspend(c *fiber.Ctx) error { return h.setActive(c, false) }
+func (h *Handler) suspend(c *fiber.Ctx) error  { return h.setActive(c, false) }
 func (h *Handler) activate(c *fiber.Ctx) error { return h.setActive(c, true) }
 
 func (h *Handler) setActive(c *fiber.Ctx, ativo bool) error {

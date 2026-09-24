@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"zapgov/backend/internal/tenantctx"
 )
 
 // Template é a forma exposta pela API (alinhada com o front).
@@ -60,6 +61,9 @@ func (c *Client) creds(ctx context.Context) (string, string, string) {
 			}
 			return w, t, v
 		}
+	}
+	if c.Resolve != nil && tenantctx.From(ctx) != 1 {
+		return "", "", c.apiVersion
 	}
 	return c.wabaID, c.token, c.apiVersion
 }

@@ -3,9 +3,10 @@ package flow
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"zapgov/backend/internal/messaging"
 )
@@ -21,11 +22,6 @@ type Replier interface {
 type Service struct {
 	repo    *Repository
 	replier Replier
-
-	// OnOpenTicket, se definido, abre um chamado de suporte a partir das
-	// variáveis coletadas no fluxo (bloco action kind "abrir_chamado").
-	// Desacopla o pacote flow do pacote tickets. Devolve o número do chamado.
-	OnOpenTicket func(ctx context.Context, from, nome string, vars map[string]string) (numero int, err error)
 }
 
 func NewService(repo *Repository, replier Replier) *Service {
@@ -64,10 +60,14 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 		vars = map[string]string{}
 	}
 	// Nome do perfil do WhatsApp fica disponível p/ blocos (ex.: abrir_chamado).
-	if name != "" {
+	if name != "" || vars["_nome"] == "" {
 		vars["_nome"] = name
 	}
 
+	vars["_telefone"] = from
+	if vars["_referencia_externa"] == "" {
+		vars["_referencia_externa"] = "wa-" + uuid.NewString()
+	}
 	cur := st.CurrentNode
 
 	if cur == "" {
@@ -85,6 +85,8 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 			return
 		}
 		switch node.Type {
+		case "api":
+			// Uma chamada interrompida retoma com a mesma referência persistida.
 		case "menu":
 			var md menuData
 			_ = json.Unmarshal(node.Data, &md)
@@ -145,6 +147,22 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 			}
 			cur = g.next(cur)
 
+		case "api":
+			// Persistir antes do efeito externo permite repetir com idempotência.
+			if err := s.repo.SaveState(ctx, from, cur, vars); err != nil {
+				return
+			}
+			handle := callAPI(ctx, node.Data, vars)
+			if err := s.repo.SaveData(ctx, from, vars); err != nil {
+				return
+			}
+			next := g.target(cur, handle)
+			if next == "" && handle == "error" {
+				_ = s.repo.Handoff(ctx, from, "", vars)
+				s.send(ctx, from, "Não foi possível confirmar o chamado agora. Um atendente vai conferir por aqui.")
+			}
+			cur = next
+
 		case "condition":
 			var d conditionData
 			_ = json.Unmarshal(node.Data, &d)
@@ -188,22 +206,11 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 	_ = s.repo.ClearState(ctx, from)
 }
 
-// abrirChamado dispara a abertura do chamado (callback) e confirma ao usuário.
+// Fluxos antigos mantêm os dados coletados e entram no atendimento humano.
 func (s *Service) abrirChamado(ctx context.Context, from string, vars map[string]string) {
-	if s.OnOpenTicket == nil {
-		s.send(ctx, from, "Abertura de chamado indisponível no momento.")
-		return
+	if err := s.repo.Handoff(ctx, from, "", vars); err != nil {
+		log.Printf("flow: encaminhar atendimento: %v", err)
 	}
-	numero, err := s.OnOpenTicket(ctx, from, vars["_nome"], vars)
-	if err != nil {
-		log.Printf("flow: abrir chamado de %s: %v", from, err)
-		s.send(ctx, from, "Não consegui abrir o chamado agora. Tente novamente mais tarde.")
-		return
-	}
-	s.send(ctx, from, fmt.Sprintf("✅ Chamado *#%d* aberto! Um técnico vai te responder por aqui.", numero))
-	// Coloca a conversa na fila do inbox (com os dados coletados) — o técnico
-	// atende o chamado pelo chat, como um atendimento normal.
-	_ = s.repo.Handoff(ctx, from, "", vars)
 }
 
 func (s *Service) send(ctx context.Context, to, body string) {
@@ -269,10 +276,12 @@ func keyForLabel(node *Node, input string) string {
 
 // render substitui {{var}} pelos valores capturados.
 func render(text string, vars map[string]string) string {
-	for k, v := range vars {
-		text = strings.ReplaceAll(text, "{{"+k+"}}", v)
-	}
-	return text
+	return variablePattern.ReplaceAllStringFunc(text, func(token string) string {
+		if value, ok := vars[token[2:len(token)-2]]; ok {
+			return value
+		}
+		return token
+	})
 }
 
 func evalCond(got, op, want string) bool {

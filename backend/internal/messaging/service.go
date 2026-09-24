@@ -87,6 +87,11 @@ type Service struct {
 	// para as mensagens dele (ex.: técnico de campo só abre a janela de 24h para
 	// receber ordens). Ações por botão continuam funcionando.
 	IsBotExempt func(ctx context.Context, from string) bool
+
+	// TechBot, se definido, processa as mensagens de um remetente isento
+	// (IsBotExempt) — o "modo técnico" do helpdesk: o técnico de campo lista e
+	// age nos chamados por menu/botões. Roda no lugar do bot do cidadão.
+	TechBot func(ctx context.Context, from, name, body, buttonID string)
 }
 
 // providerFor escolhe o provider do tenant atual (multi-tenant) ou o padrão.
@@ -130,7 +135,9 @@ func (s *Service) SendTextReply(ctx context.Context, to, body, replyTo string) (
 	}
 
 	// LGPD: bloqueia envio a quem pediu opt-out.
-	if out, _ := s.repo.ConversationOptedOut(ctx, to); out {
+	if out, err := s.repo.ConversationOptedOut(ctx, to); err != nil {
+		return nil, fmt.Errorf("verificar opt-out: %w", err)
+	} else if out {
 		return nil, ErrOptedOut
 	}
 
@@ -169,7 +176,9 @@ func (s *Service) SendTemplate(ctx context.Context, to, name, lang string, param
 	}
 
 	// LGPD: não dispara para quem está na lista de opt-out.
-	if out, _ := s.repo.IsOptedOut(ctx, to); out {
+	if out, err := s.repo.IsOptedOut(ctx, to); err != nil {
+		return nil, fmt.Errorf("verificar opt-out: %w", err)
+	} else if out {
 		return nil, ErrOptedOut
 	}
 
@@ -185,7 +194,7 @@ func (s *Service) SendTemplate(ctx context.Context, to, name, lang string, param
 
 	convID, err := s.repo.EnsureConversation(ctx, to, "")
 	if err != nil {
-		return nil, fmt.Errorf("garantir conversa: %w", err)
+		return &Message{WAMessageID: res.WAMessageID}, fmt.Errorf("garantir conversa após envio: %w", err)
 	}
 
 	body := preview
@@ -194,7 +203,7 @@ func (s *Service) SendTemplate(ctx context.Context, to, name, lang string, param
 	}
 	msg, err := s.repo.InsertOutbound(ctx, convID, res.WAMessageID, body, "")
 	if err != nil {
-		return nil, fmt.Errorf("persistir mensagem: %w", err)
+		return &Message{WAMessageID: res.WAMessageID}, fmt.Errorf("persistir mensagem após envio: %w", err)
 	}
 	s.emit(ctx, convID, "message")
 	return msg, nil
@@ -202,7 +211,9 @@ func (s *Service) SendTemplate(ctx context.Context, to, name, lang string, param
 
 // SendMenu envia um menu interativo (botões/lista). Usado pelo bot.
 func (s *Service) SendMenu(ctx context.Context, to, text string, options []MenuOption) (*Message, error) {
-	if out, _ := s.repo.ConversationOptedOut(ctx, to); out {
+	if out, err := s.repo.ConversationOptedOut(ctx, to); err != nil {
+		return nil, fmt.Errorf("verificar opt-out: %w", err)
+	} else if out {
 		return nil, ErrOptedOut
 	}
 	if open, _ := s.repo.WindowOpen(ctx, to); !open {
@@ -232,7 +243,9 @@ func (s *Service) SendMedia(ctx context.Context, to, kind, link, caption, name s
 	if to == "" || link == "" {
 		return nil, fmt.Errorf("destinatário e link da mídia são obrigatórios")
 	}
-	if out, _ := s.repo.ConversationOptedOut(ctx, to); out {
+	if out, err := s.repo.ConversationOptedOut(ctx, to); err != nil {
+		return nil, fmt.Errorf("verificar opt-out: %w", err)
+	} else if out {
 		return nil, ErrOptedOut
 	}
 	if open, _ := s.repo.WindowOpen(ctx, to); !open {
@@ -255,7 +268,9 @@ func (s *Service) SendMediaUpload(ctx context.Context, to, kind string, data []b
 	if to == "" || len(data) == 0 {
 		return nil, fmt.Errorf("destinatário e arquivo são obrigatórios")
 	}
-	if out, _ := s.repo.ConversationOptedOut(ctx, to); out {
+	if out, err := s.repo.ConversationOptedOut(ctx, to); err != nil {
+		return nil, fmt.Errorf("verificar opt-out: %w", err)
+	} else if out {
 		return nil, ErrOptedOut
 	}
 	if open, _ := s.repo.WindowOpen(ctx, to); !open {
@@ -305,14 +320,12 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 	for _, in := range incoming {
 		convID, err := s.repo.EnsureConversation(ctx, in.From, in.Name)
 		if err != nil {
-			log.Printf("webhook: garantir conversa de %s: %v", in.From, err)
-			continue
+			return fmt.Errorf("garantir conversa: %w", err)
 		}
 		inserted, err := s.repo.InsertInbound(ctx, convID, in.WAMessageID, in.Body, in.Timestamp,
 			MediaInfo{Type: in.MediaType, ID: in.MediaID, Mime: in.MediaMime, Name: in.MediaName}, in.ReplyTo)
 		if err != nil {
-			log.Printf("webhook: inserir inbound %s: %v", in.WAMessageID, err)
-			continue
+			return fmt.Errorf("inserir inbound: %w", err)
 		}
 		if !inserted {
 			continue // reentrega da Meta
@@ -344,9 +357,13 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 			continue
 		}
 
-		// Número isento (técnico de campo): a mensagem só abre a janela de 24h
-		// para ele receber ordens — não roda o bot nem entra na fila.
+		// Número isento (técnico de campo): não roda o bot do cidadão nem entra na
+		// fila. Se o modo técnico está ligado, a mensagem navega os chamados
+		// (menu/botões); senão só abre a janela de 24h para receber ordens.
 		if s.IsBotExempt != nil && s.IsBotExempt(ctx, in.From) {
+			if s.TechBot != nil {
+				s.TechBot(ctx, in.From, nome, in.Body, in.ButtonID)
+			}
 			continue
 		}
 
@@ -409,7 +426,7 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		}
 		campID, oldStatus, err := s.repo.UpdateStatus(ctx, st.WAMessageID, st.Status, errText)
 		if err != nil {
-			log.Printf("webhook: atualizar status %s: %v", st.WAMessageID, err)
+			return fmt.Errorf("atualizar status: %w", err)
 		} else if campID > 0 && oldStatus != st.Status && s.OnCampaignStatus != nil {
 			// Mensagem de campanha mudou de status → atualiza os contadores do disparo.
 			s.OnCampaignStatus(ctx, campID, oldStatus, st.Status)
@@ -459,11 +476,11 @@ func (s *Service) ListRecent(ctx context.Context, limit int) ([]Message, error) 
 
 // ListConversations devolve as conversas para a lista do inbox (filtro opcional).
 // soAtendimento=true esconde conversas em fase de bot (uso do papel atendente).
-func (s *Service) ListConversations(ctx context.Context, limit int, setor, status, q string, soAtendimento bool) ([]Conversation, error) {
+func (s *Service) ListConversations(ctx context.Context, limit int, setores []string, status, q string, soAtendimento bool) ([]Conversation, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	return s.repo.ListConversations(ctx, limit, setor, status, q, soAtendimento)
+	return s.repo.ListConversations(ctx, limit, setores, status, q, soAtendimento)
 }
 
 // ListSessions devolve as sessões (atendimentos) de uma conversa.
@@ -533,6 +550,13 @@ func (s *Service) SetAuthor(ctx context.Context, id int64, autor string) error {
 func (s *Service) ConversationAttendant(ctx context.Context, convID int64) string {
 	_, atendente, _ := s.repo.SetorAtendente(ctx, convID)
 	return atendente
+}
+
+// OwnsConversation confirma que a conversa é do tenant do contexto. Usar antes
+// de qualquer escrita por id vindo da URL (barreira anti-IDOR cross-tenant).
+func (s *Service) OwnsConversation(ctx context.Context, convID int64) bool {
+	ok, err := s.repo.ConversationBelongs(ctx, convID)
+	return err == nil && ok
 }
 
 // AddEvent registra um evento de sistema na conversa (resolvido/assumiu/

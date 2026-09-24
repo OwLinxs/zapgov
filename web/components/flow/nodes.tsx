@@ -20,6 +20,11 @@ export const NODE_META: Record<
   input: { label: "Pergunta", icon: "edit", color: "var(--st-pending)", defaultData: { prompt: "Qual seu nome?", var: "nome" } },
   condition: { label: "Condição", icon: "filter", color: "var(--st-delivered)", defaultData: { var: "nome", op: "eq", value: "" } },
   action: { label: "Ação", icon: "zap", color: "var(--brand-text)", defaultData: { kind: "assign_department", department: "" } },
+  api: { label: "Chamar API", icon: "zap", color: "var(--st-delivered)", defaultData: {
+    integration: "sige_ti", base_url: "", api_key: "",
+    body: JSON.stringify({ equipamento_descricao: "{{equipamento_descricao}}", defeito_relatado: "{{defeito_relatado}}", equipamento_identificacao: "", solicitante_nome: "{{_nome}}", solicitante_contato: "{{_telefone}}", prioridade: "normal" }, null, 2),
+    response: { numero: "numero", id: "id", status: "status" },
+  } },
   handoff: { label: "Atendente", icon: "user", color: "var(--st-read)", defaultData: { department: "" } },
   end: { label: "Fim", icon: "ban", color: "var(--st-failed)", defaultData: {} },
 };
@@ -72,7 +77,7 @@ function SingleOut({ type, data, selected }: NodeProps & { type: string }) {
           </>
         )}
         {type === "action" && ((data as any).kind === "abrir_chamado"
-          ? <>Abrir chamado <b>{(data as any).prioridade ? "(" + (data as any).prioridade + ")" : ""}</b></>
+          ? <>Encaminhar ao atendimento</>
           : <>Atribuir setor: <b>{(data as any).department || "—"}</b></>)}
         {type === "start" && <span className="muted">Entrada do fluxo</span>}
       </Shell>
@@ -155,7 +160,20 @@ function Terminal({ type, data, selected }: NodeProps & { type: string }) {
   );
 }
 
+function APINode({ selected }: NodeProps) {
+  return <>
+    <Handle type="target" position={Position.Top} style={dotStyle} />
+    <Shell type="api" selected={selected}>
+      SIGE-TI · Criar chamado
+      <div className="row between" style={{ marginTop: 8 }}><span>Sucesso</span><span>Erro</span></div>
+    </Shell>
+    <Handle type="source" position={Position.Bottom} id="success" style={{ ...dotStyle, left: "25%", background: "var(--st-read)" }} />
+    <Handle type="source" position={Position.Bottom} id="error" style={{ ...dotStyle, left: "75%", background: "var(--st-failed)" }} />
+  </>;
+}
+
 export const nodeTypes = {
+  api: APINode,
   start: (p: NodeProps) => <SingleOut {...p} type="start" />,
   message: (p: NodeProps) => <SingleOut {...p} type="message" />,
   input: (p: NodeProps) => <SingleOut {...p} type="input" />,

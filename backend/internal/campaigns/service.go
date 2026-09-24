@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"zapgov/backend/internal/queue"
-	"zapgov/backend/internal/tenantctx"
 )
 
 // Enqueuer enfileira o envio de cada mensagem (satisfeito por queue.Client).
@@ -146,7 +145,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Campaign, error)
 		schedAt = in.ScheduledAt
 	}
 
-	camp, err := s.repo.Create(ctx, Campaign{
+	camp, err := s.repo.CreateDelivery(ctx, Campaign{
 		Template:      in.Template,
 		Language:      in.Language,
 		Setor:         in.Setor,
@@ -155,73 +154,27 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Campaign, error)
 		Operador:      in.Operador,
 		Personalizado: personalizado,
 		ScheduledAt:   schedAt,
-	})
+	}, recs, in.Body)
 	if err != nil {
 		return nil, fmt.Errorf("criar campanha: %w", err)
 	}
-	if err := s.repo.AddRecipients(ctx, camp.ID, recs); err != nil {
-		return nil, fmt.Errorf("salvar destinatários: %w", err)
-	}
-
-	if status == "enviando" {
-		s.enqueueAll(ctx, camp, in.Body, recs)
-	}
-	return camp, nil
-}
-
-// enqueueAll enfileira um job por destinatário (com preview e lembrete).
-func (s *Service) enqueueAll(ctx context.Context, camp *Campaign, body string, recs []Recipient) {
-	tid := tenantctx.From(ctx)
+	// Reminders are persisted separately; delivery itself is durable in the outbox.
 	for _, rec := range recs {
-		preview := render(body, rec.Params)
-		if body == "" {
-			preview = "[modelo: " + camp.Template + "]"
-		}
-		if err := s.enq.EnqueueCampaignSend(queue.CampaignSendPayload{
-			TenantID:   tid,
-			CampaignID: camp.ID,
-			To:         rec.Phone,
-			Template:   camp.Template,
-			Language:   camp.Language,
-			Params:     rec.Params,
-			Preview:    preview,
-		}); err != nil {
-			_ = s.repo.IncFalhas(ctx, camp.ID)
-			continue
-		}
-		// Lembrete automático: só no personalizado (datas individuais).
 		if camp.Personalizado && s.OnDateInTemplate != nil {
 			if data, ok := acharData(rec.Params); ok {
 				s.OnDateInTemplate(ctx, rec.Phone, rec.Nome, data)
 			}
 		}
 	}
+	// Failure here does not lose the campaign: the scheduler retries from PostgreSQL.
+	if status == "enviando" {
+		_, _ = s.repo.DispatchPending(ctx, s.enq, 100)
+	}
+	return camp, nil
 }
 
-// DispatchDue enfileira campanhas agendadas vencidas. Chamado pelo agendador.
-// O corpo do template não foi persistido → preview usa "[modelo: nome]".
 func (s *Service) DispatchDue(ctx context.Context, limit int) (int, error) {
-	due, err := s.repo.DueScheduled(ctx, limit)
-	if err != nil {
-		return 0, err
-	}
-	n := 0
-	for _, camp := range due {
-		tctx := tenantctx.With(ctx, camp.TenantID)
-		// transição atômica (evita despachar 2x se houver corrida)
-		ok, err := s.repo.SetStatus(tctx, camp.ID, "agendado", "enviando")
-		if err != nil || !ok {
-			continue
-		}
-		recs, err := s.repo.Recipients(tctx, camp.ID)
-		if err != nil {
-			continue
-		}
-		c := camp
-		s.enqueueAll(tctx, &c, "", recs)
-		n++
-	}
-	return n, nil
+	return s.repo.DispatchPending(ctx, s.enq, limit*100)
 }
 
 // Cancel cancela uma campanha agendada (não enfileirada ainda).

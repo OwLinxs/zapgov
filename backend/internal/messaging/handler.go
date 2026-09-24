@@ -24,6 +24,9 @@ type Handler struct {
 	// RouteBySetor, se definido e true, restringe o atendente às conversas do
 	// próprio setor (config por tenant).
 	RouteBySetor func(ctx context.Context) bool
+	// VisGroups, se definido, devolve os grupos de setores que se enxergam
+	// (config por tenant). Atendente num setor de um grupo vê todos do grupo.
+	VisGroups func(ctx context.Context) [][]string
 	// TagAttendant, se definido, aplica uma etiqueta com o nome do atendente ao
 	// assumir a conversa (config por tenant; no-op se desligado).
 	TagAttendant func(ctx context.Context, convID int64, nome string)
@@ -61,21 +64,48 @@ func (h *Handler) routeBySetor(c *fiber.Ctx) bool {
 	return h.RouteBySetor != nil && h.RouteBySetor(c.Context())
 }
 
+func (h *Handler) visGroups(c *fiber.Ctx) [][]string {
+	if h.VisGroups == nil {
+		return nil
+	}
+	return h.VisGroups(c.Context())
+}
+
 func (h *Handler) tag(c *fiber.Ctx, convID int64) {
 	if h.TagAttendant != nil {
 		h.TagAttendant(c.Context(), convID, operador(c))
 	}
 }
 
-// setorEfetivo decide o filtro de setor da listagem: com o roteamento por setor
-// ligado, o atendente é FORÇADO ao próprio setor (ignora o filtro pedido);
-// atendente sem setor definido vê tudo (não trava acesso); admin/supervisor
-// usam o filtro que pediram. Função pura — testável sem HTTP.
-func setorEfetivo(papel, setorUsuario, setorPedido string, rotear bool) string {
-	if papel == "atendente" && rotear && setorUsuario != "" {
-		return setorUsuario
+// setoresPermitidos calcula o CONJUNTO de setores que o usuário pode ver na
+// listagem. nil = vê tudo (admin/supervisor, ou atendente sem restrição). Com o
+// roteamento ligado, o atendente vê os setores do GRUPO de visibilidade do seu
+// setor (setores que se enxergam); se o setor não está em nenhum grupo, vê só o
+// próprio. Função pura — testável sem HTTP.
+func setoresPermitidos(papel, setorUsuario string, rotear bool, grupos [][]string) []string {
+	if papel != "atendente" || !rotear {
+		return nil // vê tudo
 	}
-	return setorPedido
+	if setorUsuario == "" {
+		return []string{}
+	}
+	for _, g := range grupos {
+		for _, s := range g {
+			if s == setorUsuario {
+				return g // vê todos os setores do grupo
+			}
+		}
+	}
+	return []string{setorUsuario} // isolado no próprio setor
+}
+
+func contemSetor(ss []string, v string) bool {
+	for _, s := range ss {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 // herdaSetor grava o setor do atendente na conversa (se ela ainda não tiver).
@@ -110,6 +140,17 @@ func (h *Handler) marcaAutor(c *fiber.Ctx, msg *Message) {
 	msg.Autor = nome
 }
 
+// exigeDono barra IDOR cross-tenant: responde 404 e devolve false se a conversa
+// (id vindo da URL, sequência global) não pertence ao tenant logado. Chamar no
+// início de TODA rota de escrita que recebe :id de conversa.
+func (h *Handler) exigeDono(c *fiber.Ctx, convID int64) bool {
+	if !h.svc.OwnsConversation(c.Context(), convID) {
+		_ = c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "conversa não encontrada"})
+		return false
+	}
+	return true
+}
+
 // claimTracing assume a conversa e, se ela estava com OUTRO atendente, deixa um
 // evento no chat avisando a troca — assim o atendente anterior sabe que perdeu.
 func (h *Handler) claimTracing(c *fiber.Ctx, convID int64) {
@@ -122,27 +163,27 @@ func (h *Handler) claimTracing(c *fiber.Ctx, convID int64) {
 }
 
 // Register registra as rotas autenticadas de mensageria.
-// (Auth/JWT entra numa fatia posterior; aqui as rotas estão abertas no dev.)
+// O grupo exige JWT e cada rota aplica a autorização de conversas/setores.
 func (h *Handler) Register(r fiber.Router) {
-	r.Post("/messages/send", h.sendMessage)
-	r.Post("/messages/template", h.sendTemplate)
-	r.Post("/messages/media", h.sendMedia)
-	r.Post("/messages/upload", h.uploadMedia)
-	r.Get("/media/:id", h.getMedia)
-	r.Get("/messages", h.listMessages)
-	r.Get("/conversations", h.listConversations)
-	r.Get("/conversations/:id/messages", h.conversationMessages)
-	r.Get("/conversations/:id/sessions", h.conversationSessions)
-	r.Get("/sessions/:id/messages", h.sessionMessages)
-	r.Put("/conversations/:id/claim", h.claim)
-	r.Put("/conversations/:id/transfer", h.transfer)
-	r.Post("/conversations/:id/note", h.addNote)
-	r.Post("/conversations/:id/react", h.react)
-	r.Put("/conversations/:id/resolve", h.resolve)
-	r.Put("/conversations/:id/optout", h.optOut)
-	r.Put("/conversations/:id/optin", h.optIn)
-	r.Put("/conversations/:id/labels", h.setLabels)
-	r.Post("/conversations/resolve-bulk", h.resolveBulk)
+	r.Post("/messages/send", h.authorize, h.sendMessage)
+	r.Post("/messages/template", h.authorize, h.sendTemplate)
+	r.Post("/messages/media", h.authorize, h.sendMedia)
+	r.Post("/messages/upload", h.authorize, h.uploadMedia)
+	r.Get("/media/:id", h.authorize, h.getMedia)
+	r.Get("/messages", h.authorize, h.listMessages)
+	r.Get("/conversations", h.authorize, h.listConversations)
+	r.Get("/conversations/:id/messages", h.authorize, h.conversationMessages)
+	r.Get("/conversations/:id/sessions", h.authorize, h.conversationSessions)
+	r.Get("/sessions/:id/messages", h.authorize, h.sessionMessages)
+	r.Put("/conversations/:id/claim", h.authorize, h.claim)
+	r.Put("/conversations/:id/transfer", h.authorize, h.transfer)
+	r.Post("/conversations/:id/note", h.authorize, h.addNote)
+	r.Post("/conversations/:id/react", h.authorize, h.react)
+	r.Put("/conversations/:id/resolve", h.authorize, h.resolve)
+	r.Put("/conversations/:id/optout", h.authorize, h.optOut)
+	r.Put("/conversations/:id/optin", h.authorize, h.optIn)
+	r.Put("/conversations/:id/labels", h.authorize, h.setLabels)
+	r.Post("/conversations/resolve-bulk", h.authorize, h.resolveBulk)
 }
 
 func (h *Handler) resolveBulk(c *fiber.Ctx) error {
@@ -164,6 +205,9 @@ func (h *Handler) setLabels(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
+	}
 	var body struct {
 		LabelIDs []int64 `json:"label_ids"`
 	}
@@ -181,6 +225,9 @@ func (h *Handler) optOut(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
+	}
 	if err := h.svc.OptOutConversation(c.Context(), int64(id)); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -191,6 +238,9 @@ func (h *Handler) optIn(c *fiber.Ctx) error {
 	id, err := c.ParamsInt("id")
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
 	}
 	if err := h.svc.OptInConversation(c.Context(), int64(id)); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -431,7 +481,8 @@ func (h *Handler) getMedia(c *fiber.Ctx) error {
 
 func (h *Handler) listMessages(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 50)
-	msgs, err := h.svc.ListRecent(c.Context(), limit)
+	sectors, _ := c.Locals("allowed_sectors").([]string)
+	msgs, err := h.svc.repo.ListRecentScoped(c.Context(), limit, sectors)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -439,16 +490,25 @@ func (h *Handler) listMessages(c *fiber.Ctx) error {
 }
 
 func (h *Handler) listConversations(c *fiber.Ctx) error {
-	setor := c.Query("setor")
-	if setor == "Todos" {
-		setor = ""
+	setorPedido := c.Query("setor")
+	if setorPedido == "Todos" {
+		setorPedido = ""
 	}
 	// Atendente não enxerga conversas em fase de bot — só fila/atendimento/resolvidas.
 	papel, _ := c.Locals("papel").(string)
 	soAtendimento := papel == "atendente"
 	userSetor, _ := c.Locals("setor").(string)
-	setor = setorEfetivo(papel, userSetor, setor, h.routeBySetor(c))
-	convs, err := h.svc.ListConversations(c.Context(), c.QueryInt("limit", 100), setor, c.Query("status"), c.Query("q"), soAtendimento)
+
+	// Escopo permitido (nil = tudo). O filtro pedido na UI só vale dentro dele.
+	permitidos := setoresPermitidos(papel, userSetor, h.routeBySetor(c), h.visGroups(c))
+	if permitidos != nil && len(permitidos) == 0 {
+		return c.JSON(fiber.Map{"conversations": []Conversation{}})
+	}
+	setores := permitidos
+	if setorPedido != "" && (permitidos == nil || contemSetor(permitidos, setorPedido)) {
+		setores = []string{setorPedido}
+	}
+	convs, err := h.svc.ListConversations(c.Context(), c.QueryInt("limit", 100), setores, c.Query("status"), c.Query("q"), soAtendimento)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -484,12 +544,15 @@ func (h *Handler) claim(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
+	}
 	var body struct {
 		Atendente string `json:"atendente"`
 	}
 	_ = c.BodyParser(&body)
 	antigo := h.svc.ConversationAttendant(c.Context(), int64(id))
-	if err := h.svc.Claim(c.Context(), int64(id), body.Atendente); err != nil {
+	if err := h.svc.Claim(c.Context(), int64(id), operador(c)); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	novo := operador(c)
@@ -506,6 +569,9 @@ func (h *Handler) react(c *fiber.Ctx) error {
 	id, err := c.ParamsInt("id")
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
 	}
 	var body struct {
 		WAMessageID string `json:"wa_message_id"`
@@ -525,6 +591,9 @@ func (h *Handler) addNote(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
+	}
 	var body struct {
 		Body string `json:"body"`
 	}
@@ -543,6 +612,9 @@ func (h *Handler) transfer(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
 	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
+	}
 	var body struct {
 		Setor string `json:"setor"`
 	}
@@ -560,6 +632,9 @@ func (h *Handler) resolve(c *fiber.Ctx) error {
 	id, err := c.ParamsInt("id")
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id inválido"})
+	}
+	if !h.exigeDono(c, int64(id)) {
+		return nil
 	}
 	h.svc.AddEvent(c.Context(), int64(id), operador(c)+" encerrou o atendimento")
 	if err := h.svc.Resolve(c.Context(), int64(id)); err != nil {

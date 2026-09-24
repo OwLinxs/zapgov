@@ -10,8 +10,10 @@ RUN CGO_ENABLED=0 go build -o /bin/server ./cmd/server && \
 # --- runtime ---
 FROM alpine:3.20
 # ffmpeg: converte audio gravado no navegador (webm) p/ ogg aceito pela Meta.
-RUN apk add --no-cache ca-certificates ffmpeg
+RUN apk add --no-cache ca-certificates ffmpeg tzdata
 COPY --from=build /bin/server /bin/server
 COPY --from=build /bin/worker /bin/worker
+RUN addgroup -S zapgov && adduser -S -G zapgov zapgov
+USER zapgov
 EXPOSE 8080
 ENTRYPOINT ["/bin/server"]

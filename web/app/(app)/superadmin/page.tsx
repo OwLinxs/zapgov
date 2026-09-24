@@ -12,7 +12,6 @@ import {
 const MODULOS: { key: string; label: string; hint: string }[] = [
   { key: "chatbot", label: "Chatbot / Fluxo", hint: "Editor do fluxo do bot e config de atendimento automático" },
   { key: "fila", label: "Fila ao Vivo", hint: "Painel de fila em tempo real" },
-  { key: "chamados", label: "Chamados T.I.", hint: "Helpdesk interno (kanban, despacho a técnicos)" },
   { key: "base", label: "Base de Conhecimento", hint: "Artigos de solução dos atendimentos" },
   { key: "disparo", label: "Disparo em massa", hint: "Campanhas de template para contatos" },
 ];
@@ -184,10 +183,10 @@ function NovoTenantModal({ open, onClose, onCreated }: { open: boolean; onClose:
           </select>
         </Field>
         <div className="row" style={{ gap: 12 }}>
-          <Field label="E-mail do admin" hint="Opcional. Padrão: admin@zapgov.local">
+          <Field label="E-mail do admin" hint="Obrigatório para o administrador inicial.">
             <Input type="email" value={f.admin_email} onChange={(e) => setF({ ...f, admin_email: e.target.value })} />
           </Field>
-          <Field label="Senha provisória" hint="Opcional. Padrão: admin123">
+          <Field label="Senha provisória" hint="Obrigatória, com 12 a 72 bytes. Será trocada no primeiro acesso.">
             <Input type="password" value={f.admin_senha} onChange={(e) => setF({ ...f, admin_senha: e.target.value })} />
           </Field>
         </div>

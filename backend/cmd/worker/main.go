@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"strings"
 
 	"github.com/hibiken/asynq"
 	"golang.org/x/time/rate"
@@ -19,6 +18,7 @@ import (
 	"zapgov/backend/internal/messaging/whatsapp"
 	"zapgov/backend/internal/obs"
 	"zapgov/backend/internal/queue"
+	"zapgov/backend/internal/realtime"
 	"zapgov/backend/internal/tenantctx"
 	"zapgov/backend/internal/tenants"
 )
@@ -41,7 +41,16 @@ func main() {
 	provider := whatsapp.New(cfg.WhatsAppPhoneNumberID, cfg.WhatsAppToken, cfg.WhatsAppAppSecret, cfg.WhatsAppAPIVersion)
 	msgSvc := messaging.NewService(messaging.NewRepository(pool), provider)
 	// Envio multi-tenant na fila: usa as credenciais do tenant do job.
-	msgSvc.ProviderResolver = tenants.NewRepository(pool).ProviderResolver(provider)
+	tenantRepo := tenants.NewRepository(pool)
+	if err := tenantRepo.SealExisting(ctx); err != nil {
+		log.Fatalf("credenciais: %v", err)
+	}
+	msgSvc.ProviderResolver = tenantRepo.ProviderResolver(provider)
+	hub := realtime.NewHub()
+	defer hub.ConnectRedis(ctx, cfg.RedisAddr)()
+	msgSvc.OnEvent = func(tid, cid int64, kind, name, preview string) {
+		hub.Publish(realtime.Event{TenantID: tid, ConversationID: cid, Type: kind, Name: name, Preview: preview})
+	}
 	campRepo := campaigns.NewRepository(pool)
 
 	// Vazão: a Meta aceita ~80 msg/s. Ficamos folgados em 40/s.
@@ -67,58 +76,76 @@ func main() {
 func handleCampaignSend(svc *messaging.Service, repo *campaigns.Repository, limiter *rate.Limiter) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		var p queue.CampaignSendPayload
-		if err := json.Unmarshal(t.Payload(), &p); err != nil {
-			return asynq.SkipRetry // payload inválido não adianta repetir
+		if json.Unmarshal(t.Payload(), &p) != nil || p.TenantID <= 0 || p.RecipientID <= 0 {
+			log.Printf("worker: tarefa sem identidade de destinatário; conferir campanha legada")
+			return asynq.SkipRetry
 		}
-
-		// Isolamento: injeta o tenant do job no context (repos + provider).
-		if p.TenantID > 0 {
-			ctx = tenantctx.With(ctx, p.TenantID)
+		ctx = tenantctx.With(ctx, p.TenantID)
+		trusted, err := repo.DeliveryPayload(ctx, p.RecipientID, p.CampaignID)
+		if err != nil {
+			return err
 		}
-
-		// Respeita a vazão antes de chamar a Meta.
+		p = trusted
 		if err := limiter.Wait(ctx); err != nil {
 			return err
 		}
-
-		msg, err := svc.SendTemplate(ctx, p.To, p.Template, p.Language, p.Params, p.Preview)
-		if err == nil {
-			// Liga a mensagem à campanha: o webhook de status atualiza os
-			// contadores de entregues/lidas do disparo.
-			_ = repo.TagMessage(ctx, msg.ID, p.CampaignID)
-			_ = repo.IncEnviadas(ctx, p.CampaignID)
-			_ = repo.MarkDoneIfComplete(ctx, p.CampaignID)
+		claimed, err := repo.ClaimDelivery(ctx, p.RecipientID, p.CampaignID)
+		if err != nil {
+			return err
+		}
+		if !claimed {
 			return nil
 		}
-
-		// LGPD: descadastrado → pula sem contar como falha nem reenviar.
-		if errors.Is(err, messaging.ErrOptedOut) {
-			log.Printf("campanha %d: %s está em opt-out, pulado", p.CampaignID, p.To)
-			return asynq.SkipRetry
+		msg, sendErr := svc.SendTemplate(ctx, p.To, p.Template, p.Language, p.Params, p.Preview)
+		state := deliveryState(sendErr)
+		if state == "retry" {
+			retried, max := retryInfo(ctx)
+			if retried < max {
+				if err := repo.RetryDelivery(ctx, p.RecipientID); err != nil {
+					return err
+				}
+				return sendErr
+			}
+			state = "failed"
 		}
-
-		// Recusa da Meta (4xx) é permanente: conta falha e não tenta de novo.
-		if isPermanent(err) {
-			_ = repo.IncFalhas(ctx, p.CampaignID)
-			_ = repo.MarkDoneIfComplete(ctx, p.CampaignID)
-			log.Printf("campanha %d: falha permanente para %s: %v", p.CampaignID, p.To, err)
-			return asynq.SkipRetry
+		var waID, detail string
+		var msgID int64
+		if msg != nil {
+			waID = msg.WAMessageID
+			msgID = msg.ID
 		}
-
-		// Erro transitório (5xx/rede): deixa o Asynq repetir com backoff.
-		// Se esgotar as tentativas, contabiliza falha.
-		if retried, max := retryInfo(ctx); retried >= max {
-			_ = repo.IncFalhas(ctx, p.CampaignID)
-			_ = repo.MarkDoneIfComplete(ctx, p.CampaignID)
+		if sendErr != nil {
+			detail = sendErr.Error()
 		}
-		return err
+		if err := repo.FinishDelivery(ctx, p.RecipientID, p.CampaignID, state, waID, msgID, detail); err != nil {
+			return err
+		}
+		return nil
 	}
 }
 
-func isPermanent(err error) bool {
-	return strings.Contains(err.Error(), "recusou (4")
+func deliveryState(err error) string {
+	if err == nil {
+		return "sent"
+	}
+	if errors.Is(err, messaging.ErrOptedOut) {
+		return "skipped"
+	}
+	if errors.Is(err, messaging.ErrProviderUnavailable) {
+		return "failed"
+	}
+	var refusal *messaging.ProviderError
+	if errors.As(err, &refusal) {
+		if refusal.Status == 429 {
+			return "retry"
+		}
+		if refusal.Status >= 400 && refusal.Status < 500 {
+			return "failed"
+		}
+	}
+	// Network failures, provider 5xx and persistence failures may follow acceptance.
+	return "uncertain"
 }
-
 func retryInfo(ctx context.Context) (int, int) {
 	retried, _ := asynq.GetRetryCount(ctx)
 	max, _ := asynq.GetMaxRetry(ctx)

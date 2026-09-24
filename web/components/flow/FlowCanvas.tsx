@@ -24,7 +24,7 @@ function edgeId(e: { source: string; sourceHandle?: string | null; target: strin
   return `${e.source}:${e.sourceHandle ?? ""}->${e.target}`;
 }
 
-const PALETTE: string[] = ["message", "menu", "input", "condition", "action", "handoff", "end"];
+const PALETTE: string[] = ["message", "menu", "input", "condition", "action", "api", "handoff", "end"];
 
 export default function FlowCanvas() {
   const toast = useToast();
@@ -109,6 +109,8 @@ export default function FlowCanvas() {
     };
     try {
       await saveFlowGraph(flowId, graph);
+      const saved = await getActiveFlow();
+      if (saved) aplicarFluxo(saved);
       toast({ type: "success", title: "Fluxo salvo", message: "Já vale no atendimento." });
     } catch (e) {
       toast({ type: "error", title: "Erro ao salvar", message: (e as Error).message });
@@ -293,6 +295,28 @@ function EditPanel({
         </>
       )}
 
+      {node.type === "api" && (
+        <>
+          <p className="muted" style={{ fontSize: 12 }}>SIGE-TI · POST /integracao/ordens-servico. Configure o destino e a chave abaixo.</p>
+          <Field label="URL base" hint="Ex.: https://sige-ti.prefeitura.gov.br (sem /integracao/ordens-servico)">
+            <Input value={d.base_url || ""} onChange={(e) => onPatch({ base_url: e.target.value })} placeholder="https://sige-ti.prefeitura.gov.br" />
+          </Field>
+          <Field label="Chave de API" hint={d.api_key_configured ? "Chave salva. Deixe vazio para manter ou digite uma nova para substituir. Ao mudar a URL, informe a chave novamente." : "Informe a chave fornecida pelo SIGE-TI."}>
+            <Input type="password" autoComplete="new-password" value={d.api_key || ""} onChange={(e) => onPatch({ api_key: e.target.value })} placeholder={d.api_key_configured ? "Chave configurada" : "X-API-Key"} />
+          </Field>
+          <Field label="Dados enviados (JSON)" hint="Use {{variavel}} nos valores. Referência única e origem whatsapp são incluídas automaticamente.">
+            <textarea className="textarea mono" style={{ minHeight: 260 }} value={d.body || ""} onChange={(e) => onPatch({ body: e.target.value })} />
+          </Field>
+          <p className="muted" style={{ fontSize: 12 }}>Disponíveis: {"{{_nome}}"} (perfil), {"{{_telefone}}"} e as respostas salvas nas perguntas. Prioridade: baixa, normal ou alta.</p>
+          {["numero", "id", "status"].map((field) => (
+            <Field key={field} label={`Salvar ${field} na variável`}>
+              <Input value={d.response?.[field] || ""} onChange={(e) => onPatch({ response: { ...d.response, [field]: e.target.value.trim() } })} />
+            </Field>
+          ))}
+          <p className="muted" style={{ fontSize: 12 }}>Conecte Sucesso a uma mensagem com {"{{numero}}"}. Em Erro, use uma mensagem ou encaminhe ao atendente. api_http_status e api_erro permitem tratar falhas com condições. Sem saída de erro, encaminha ao atendimento humano.</p>
+        </>
+      )}
+
       {node.type === "condition" && (
         <>
           <Field label="Variável">
@@ -314,7 +338,7 @@ function EditPanel({
         <Field label="Tipo de ação">
           <select className="select" value={d.kind || "assign_department"} onChange={(e) => onPatch({ kind: e.target.value })}>
             <option value="assign_department">Atribuir setor</option>
-            <option value="abrir_chamado">Abrir chamado (T.I.)</option>
+            {d.kind === "abrir_chamado" && <option value="abrir_chamado">Encaminhar ao atendimento (ação antiga)</option>}
           </select>
         </Field>
       )}
@@ -331,27 +355,6 @@ function EditPanel({
             ))}
           </select>
         </Field>
-      )}
-
-      {/* Abrir chamado: prioridade opcional + dica das variáveis esperadas. */}
-      {node.type === "action" && d.kind === "abrir_chamado" && (
-        <>
-          <Field label="Prioridade">
-            <select className="select" value={d.prioridade || ""} onChange={(e) => onPatch({ prioridade: e.target.value })}>
-              <option value="">Padrão (média)</option>
-              <option value="baixa">Baixa</option>
-              <option value="media">Média</option>
-              <option value="alta">Alta</option>
-              <option value="critica">Crítica</option>
-            </select>
-          </Field>
-          <p className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
-            Coloque blocos de <b>Pergunta</b> antes deste, salvando nas variáveis{" "}
-            <code>titulo</code>, <code>descricao</code>, <code>categoria</code>,{" "}
-            <code>secretaria</code> e <code>local</code>. O chamado é criado com elas
-            e o nome/telefone de quem escreveu.
-          </p>
-        </>
       )}
 
       {(node.type === "start" || node.type === "end") && (

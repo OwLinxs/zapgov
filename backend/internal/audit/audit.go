@@ -4,6 +4,7 @@ package audit
 
 import (
 	"context"
+ "log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -87,9 +88,6 @@ func Middleware(repo *Repository) fiber.Handler {
 			return err
 		}
 		status := c.Response().StatusCode()
-		if status >= 400 {
-			return err // não audita tentativa que falhou
-		}
 
 		uid, _ := c.Locals("uid").(int64)
 		nome, _ := c.Locals("nome").(string)
@@ -101,9 +99,9 @@ func Middleware(repo *Repository) fiber.Handler {
 		}
 		// Escrita best-effort em background (não atrasa a resposta).
 		entry := Entry{TenantID: tid, UserID: uidPtr, UserNome: nome, Papel: papel, Metodo: m, Rota: c.Path(), Status: status, IP: c.IP()}
-		go func() {
-			_ = repo.Write(context.Background(), entry)
-		}()
+		ctx,cancel:=context.WithTimeout(context.Background(),3*time.Second)
+ defer cancel()
+ if auditErr:=repo.Write(ctx,entry);auditErr!=nil{slog.Error("auditoria: gravação falhou", "err",auditErr,"tenant",tid,"user",uid,"method",m,"path",entry.Rota)}
 		return err
 	}
 }

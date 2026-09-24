@@ -108,8 +108,23 @@ func (r *Repository) List(ctx context.Context) ([]Flow, error) {
 }
 
 func (r *Repository) SaveGraph(ctx context.Context, id int64, graph json.RawMessage) error {
-	_, err := r.pool.Exec(ctx, `UPDATE flows SET graph = $2 WHERE id = $1 AND tenant_id = $3`, id, graph, tenantctx.From(ctx))
-	return err
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var old json.RawMessage
+	if err := tx.QueryRow(ctx, `SELECT graph FROM flows WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, id, tenantctx.From(ctx)).Scan(&old); err != nil {
+		return err
+	}
+	secured, err := secureGraph(graph, old, tenantctx.From(ctx))
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE flows SET graph=$2 WHERE id=$1 AND tenant_id=$3`, id, secured, tenantctx.From(ctx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Create cria um fluxo ativo do zero (com um bloco start) para o tenant — usado
@@ -129,4 +144,14 @@ func (r *Repository) Create(ctx context.Context, nome string) (*Flow, error) {
 		return nil, err
 	}
 	return &f, nil
+}
+
+// SaveData preserva o retorno da integração na conversa, inclusive após o fim do fluxo.
+func (r *Repository) SaveData(ctx context.Context, phone string, vars map[string]string) error {
+	raw, err := json.Marshal(vars)
+	if err != nil {
+		return err
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE conversations SET dados = COALESCE(dados, '{}'::jsonb) || $3::jsonb WHERE tenant_id = $1 AND contact_phone = $2`, tenantctx.From(ctx), phone, raw)
+	return err
 }

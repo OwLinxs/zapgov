@@ -46,9 +46,6 @@ import {
   setConversationLabels,
   getToken,
   hhmm,
-  getTicketByConversation,
-  listKb,
-  type ApiKbArticle,
   type ApiConversation,
   type ApiMessage,
   type ApiDepartment,
@@ -599,7 +596,6 @@ export default function InboxPage() {
   const stickRef = useRef(true); // auto-scroll só quando o usuário está no fim do chat
   const [colisao, setColisao] = useState<string | null>(null); // outro atendente na conversa
   const taRef = useRef<HTMLTextAreaElement>(null); // campo de mensagem (auto-resize)
-  const [artigosRel, setArtigosRel] = useState<ApiKbArticle[]>([]); // KB: sugestão ao atender chamado
 
   // Histórico por sessão (drawer)
   const [histOpen, setHistOpen] = useState(false);
@@ -663,7 +659,7 @@ export default function InboxPage() {
   const activeIdRef = useRef<number | null>(null);
   activeIdRef.current = activeId;
 
-  // Deep-link: /inbox?conv=ID abre direto a conversa (vindo do kanban de chamados).
+  // Deep-link: /inbox?conv=ID abre direto a conversa.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("conv");
     if (p) setActiveId(Number(p));
@@ -852,14 +848,6 @@ export default function InboxPage() {
     if (activeId == null) return;
     setReplyTo(null); // trocar de conversa descarta a citação pendente
     stickRef.current = true; // ao abrir a conversa, começa no fim
-    // Se a conversa é um chamado, sugere artigos da base relacionados (atender).
-    setArtigosRel([]);
-    getTicketByConversation(activeId)
-      .then((t) => {
-        if (!t) return;
-        return listKb({ q: t.titulo, categoria: t.categoria || undefined }).then((arts) => setArtigosRel(arts.slice(0, 3)));
-      })
-      .catch(() => {});
     loadMsgs(activeId);
     const t = setInterval(() => loadMsgs(activeId), 15000);
     return () => clearInterval(t);
@@ -878,7 +866,11 @@ export default function InboxPage() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
   }, [draft]);
 
-  const atendentes = Array.from(new Set(convs.map((c) => c.atendente).filter(Boolean)));
+  // Inclui atendentes das finalizadas (finBusca) — senão quem só tem conversa
+  // resolvida não apareceria no select e não daria pra filtrar na aba Finalizados.
+  const atendentes = Array.from(
+    new Set([...convs, ...finBusca].map((c) => c.atendente).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const filtered = convs.filter(
     (c) =>
@@ -1258,30 +1250,6 @@ export default function InboxPage() {
                   ))}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Base de conhecimento: artigos relacionados ao chamado (atender). */}
-          {artigosRel.length > 0 && (
-            <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--brand-soft)", flex: "none" }}>
-              <div className="row center" style={{ gap: 6, marginBottom: 5, fontSize: 11, fontWeight: 700, color: "var(--brand-text)" }}>
-                <Icon name="fileText" size={12} /> Pode ajudar (base de conhecimento)
-              </div>
-              <div className="row wrap" style={{ gap: 6 }}>
-                {artigosRel.map((a) => (
-                  <a
-                    key={a.id}
-                    href={`/base?art=${a.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="badge"
-                    style={{ background: "var(--bg-surface)", border: "1px solid var(--brand)", color: "var(--brand-text)", cursor: "pointer", fontSize: 11.5, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    title={a.titulo}
-                  >
-                    {a.titulo}
-                  </a>
-                ))}
-              </div>
             </div>
           )}
 

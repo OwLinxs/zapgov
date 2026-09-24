@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,8 +30,10 @@ type client struct {
 
 // Hub mantém os clientes conectados e faz o fan-out dos eventos por tenant.
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*client]struct{}
+	origin    string
+	broadcast func(Event)
+	mu        sync.RWMutex
+	clients   map[*client]struct{}
 }
 
 func NewHub() *Hub {
@@ -57,6 +60,13 @@ func (h *Hub) unsubscribe(cl *client) {
 // Publish entrega o evento só aos clientes do mesmo tenant (não bloqueia se o
 // buffer encher).
 func (h *Hub) Publish(e Event) {
+	h.publishLocal(e)
+	if h.broadcast != nil {
+		h.broadcast(e)
+	}
+}
+
+func (h *Hub) publishLocal(e Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for cl := range h.clients {
@@ -72,9 +82,10 @@ func (h *Hub) Publish(e Event) {
 
 // Register monta o endpoint SSE. Autenticação via ?token= (EventSource não manda
 // header Authorization). resolve valida o token e devolve o tenant do cliente.
-func (h *Hub) Register(r fiber.Router, resolve func(token string) (int64, bool)) {
+func (h *Hub) Register(r fiber.Router, resolve func(token string) (int64, bool), allowed func(token string, e Event) bool) {
 	r.Get("/events", func(c *fiber.Ctx) error {
-		tenant, ok := resolve(c.Query("token"))
+		token := strings.Clone(c.Query("token"))
+		tenant, ok := resolve(token)
 		if !ok {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
@@ -102,6 +113,12 @@ func (h *Hub) Register(r fiber.Router, resolve func(token string) (int64, bool))
 					if !ok {
 						return
 					}
+					if tid, valid := resolve(token); !valid || tid != tenant {
+						return
+					}
+					if allowed != nil && !allowed(token, e) {
+						continue
+					}
 					b, _ := json.Marshal(e)
 					if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
 						return
@@ -110,6 +127,9 @@ func (h *Hub) Register(r fiber.Router, resolve func(token string) (int64, bool))
 						return
 					}
 				case <-tick.C:
+					if tid, valid := resolve(token); !valid || tid != tenant {
+						return
+					}
 					if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 						return
 					}
