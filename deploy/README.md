@@ -50,8 +50,8 @@ Arquitetura na prefeitura:
    DB_PASSWORD=<senha forte do banco>
    APP_ORIGIN=https://app.SEU-DOMINIO
    API_URL=https://api.SEU-DOMINIO
-   API_BIND_IP=<IP privado do servidor acessível pelo proxy>
    ```
+   Com Nginx na mesma máquina, o backend usa `127.0.0.1` por padrão. Somente se o proxy estiver em outra máquina, adicione `API_BIND_IP=<IP privado do servidor>` ao `.env`.
 5. Subir:
    ```bash
    docker compose -f docker-compose.prod.yml up -d --build

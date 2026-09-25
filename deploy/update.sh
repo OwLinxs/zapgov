@@ -50,13 +50,19 @@ cd "$ROOT"
 sudo systemctl restart zapgov-web
 
 echo "==> Conferindo saúde da API e serviço do painel"
-API_HEALTH="http://${API_BIND_IP:?defina API_BIND_IP no .env}:8080/health"
+API_HEALTH="http://${API_BIND_IP:-127.0.0.1}:8080/health"
 healthy=false
 for attempt in {1..30}; do
-  if curl --fail --silent --max-time 3 "$API_HEALTH" >/dev/null; then healthy=true; break; fi
+  if curl --noproxy "*" --fail --silent --max-time 3 "$API_HEALTH" >/dev/null; then healthy=true; break; fi
   sleep 2
 done
-[ "$healthy" = true ] || { echo "ERRO: API sem saúde após a atualização. Preserve o backup e confira logs de app/worker."; exit 1; }
+if [ "$healthy" != true ]; then
+  echo "ERRO: API não respondeu em $API_HEALTH. Preserve o backup."
+  curl --noproxy "*" --fail --show-error --max-time 3 "$API_HEALTH" || true
+  docker compose -f docker-compose.prod.yml ps -a
+  echo "Confira os logs: docker compose -f docker-compose.prod.yml logs --tail=100 app worker migrate"
+  exit 1
+fi
 sudo systemctl is-active --quiet zapgov-web
 curl --fail --silent --max-time 10 http://127.0.0.1:3000/login >/dev/null
 

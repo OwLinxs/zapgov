@@ -59,6 +59,25 @@ func TestSectorBoundaryOnDirectRoutes(t *testing.T) {
 			t.Errorf("%s %s: %d want %d", tc.method, tc.path, res.StatusCode, tc.status)
 		}
 	}
+	// The sector boundary must not prevent template initiation. The unavailable
+	// provider returns 502, proving this request reached the send handler.
+	for _, blocked := range []bool{false, true} {
+		h.TemplateAllowed = func(context.Context, string, string) bool { return !blocked }
+		req := httptest.NewRequest("POST", "/messages/template", strings.NewReader(`{"to":"5511999990002","template":"teste","language":"pt_BR"}`))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		want := 502
+		if blocked {
+			want = 403
+		}
+		if res.StatusCode != want {
+			t.Errorf("template blocked=%v: got %d want %d", blocked, res.StatusCode, want)
+		}
+	}
 	msgs, err := repo.ListRecentScoped(ctx, 50, []string{"Saúde"})
 	if err != nil || len(msgs) != 1 || msgs[0].ConversationID != own {
 		t.Fatalf("list isolation: %+v %v", msgs, err)

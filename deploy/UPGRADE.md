@@ -10,8 +10,9 @@ Faça a atualização em uma janela controlada e confira o backup antes de migra
    segurança: o backup do banco, sozinho, não recupera credenciais cifradas.
 2. Confira `JWT_SECRET` (não padrão e pelo menos 32 bytes). O Compose fixa
    `APP_ENV=production`, que valida essas configurações ao iniciar.
-3. Na `.env` da raiz, configure `API_BIND_IP` com o IP privado alcançável pelo
-   proxy; use `127.0.0.1` apenas se o proxy estiver na mesma máquina.
+3. Com o proxy na mesma máquina, não é necessário configurar `API_BIND_IP`: o
+   padrão é `127.0.0.1`. Para proxy em outra máquina, informe o IP privado do
+   servidor nessa variável na `.env` da raiz.
 4. Instalação nova: configure `SEED_ADMIN_PASSWORD` (12–72 bytes) para criar
    `admin@zapgov.local`. Instalações com usuários existentes não recriam o seed.
 5. Pare novos disparos e deixe campanhas em andamento terminarem. Pare API e

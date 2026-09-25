@@ -8,7 +8,7 @@ import (
 	"zapgov/backend/internal/tenantctx"
 )
 
-// authorize applies the same sector boundary to lists, direct IDs and sends.
+// authorize applies sector boundaries; templates may start service across sectors.
 func (h *Handler) authorize(c *fiber.Ctx) error {
 	papel, _ := c.Locals("papel").(string)
 	setor, _ := c.Locals("setor").(string)
@@ -69,7 +69,14 @@ func (h *Handler) authorize(c *fiber.Ctx) error {
 	if err != nil {
 		return c.SendStatus(fiber.StatusNotFound)
 	}
-	if convID > 0 && !h.svc.repo.CanAccess(c.Context(), convID, allowed) {
+	// Um template pode iniciar atendimento mesmo se o telefone já tiver
+	// conversa em outro setor. O envio continua validando o tenant e as
+	// permissões do template; sendTemplate atribui o setor após o sucesso.
+	accessSectors := allowed
+	if c.Method() == fiber.MethodPost && path == "/messages/template" {
+		accessSectors = nil
+	}
+	if convID > 0 && !h.svc.repo.CanAccess(c.Context(), convID, accessSectors) {
 		return c.SendStatus(fiber.StatusNotFound)
 	}
 	return c.Next()
