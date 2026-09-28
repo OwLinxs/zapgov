@@ -51,7 +51,7 @@ Arquitetura na prefeitura:
    APP_ORIGIN=https://app.SEU-DOMINIO
    API_URL=https://api.SEU-DOMINIO
    ```
-   Com Nginx na mesma máquina, o backend usa `127.0.0.1` por padrão. Somente se o proxy estiver em outra máquina, adicione `API_BIND_IP=<IP privado do servidor>` ao `.env`.
+   A API publica a porta `8080` nas interfaces do servidor, sem exigir `API_BIND_IP`. O Nginx pode acessar `127.0.0.1:8080` ou o IP interno; restrinja o acesso externo à porta no firewall.
 5. Subir:
    ```bash
    docker compose -f docker-compose.prod.yml up -d --build

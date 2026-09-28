@@ -47,7 +47,7 @@ func (i *Inbox) ProcessOne(ctx context.Context, process func(context.Context, []
 	defer tx.Rollback(ctx)
 	var id, tid int64
 	var body []byte
-	err = tx.QueryRow(ctx, `SELECT id,tenant_id,payload FROM webhook_inbox WHERE processed_at IS NULL AND next_attempt_at<=now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &tid, &body)
+	err = tx.QueryRow(ctx, `SELECT id,tenant_id,payload FROM webhook_inbox WHERE processed_at IS NULL AND next_attempt_at<=now() ORDER BY next_attempt_at,id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &tid, &body)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -64,7 +64,7 @@ func (i *Inbox) ProcessOne(ctx context.Context, process func(context.Context, []
 	}
 	processErr := process(tenantctx.With(ctx, tid), body)
 	if processErr != nil {
-		_, err = tx.Exec(ctx, `UPDATE webhook_inbox SET attempts=attempts+1, last_error=$2, next_attempt_at=now()+interval '30 seconds' WHERE id=$1`, id, processErr.Error())
+		_, err = tx.Exec(ctx, `UPDATE webhook_inbox SET attempts=attempts+1, last_error=$2, next_attempt_at=now()+interval '30 seconds' * power(2, LEAST(attempts,7)) WHERE id=$1`, id, processErr.Error())
 	} else {
 		_, err = tx.Exec(ctx, `UPDATE webhook_inbox SET processed_at=now(), attempts=attempts+1, last_error='' WHERE id=$1`, id)
 	}
@@ -92,7 +92,11 @@ func (i *Inbox) Run(ctx context.Context, process func(context.Context, []byte) e
 			cancel()
 			if err != nil {
 				slog.Error("webhook inbox", "err", err)
-				break
+				// found=true means the failure was durably rescheduled.
+				// Continue draining so a bad status cannot block other events.
+				if !found {
+					break
+				}
 			}
 			if !found {
 				break

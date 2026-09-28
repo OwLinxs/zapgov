@@ -64,7 +64,7 @@ services:
       APP_ENV: production
       CORS_ORIGINS: ${APP_ORIGIN:?defina APP_ORIGIN no .env}
     ports:
-      - "${API_BIND_IP:-127.0.0.1}:8080:8080" # só o proxy/DMZ acessa (firewall bloqueia internet)
+      - "8080:8080" # acesso pela rede; restringir ao proxy no firewall
 
   worker:
     build: ./backend

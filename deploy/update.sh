@@ -50,7 +50,7 @@ cd "$ROOT"
 sudo systemctl restart zapgov-web
 
 echo "==> Conferindo saúde da API e serviço do painel"
-API_HEALTH="http://${API_BIND_IP:-127.0.0.1}:8080/health"
+API_HEALTH="http://127.0.0.1:8080/health"
 healthy=false
 for attempt in {1..30}; do
   if curl --noproxy "*" --fail --silent --max-time 3 "$API_HEALTH" >/dev/null; then healthy=true; break; fi
