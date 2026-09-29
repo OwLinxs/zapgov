@@ -35,9 +35,6 @@ func (h *Handler) list(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	for i := range items {
-		items[i].Graph = publicGraph(items[i].Graph)
-	}
 	return c.JSON(fiber.Map{"flows": items})
 }
 
@@ -49,7 +46,6 @@ func (h *Handler) active(c *fiber.Ctx) error {
 	if fl == nil {
 		return c.JSON(fiber.Map{"flow": nil})
 	}
-	fl.Graph = publicGraph(fl.Graph)
 	return c.JSON(fiber.Map{"flow": fl})
 }
 

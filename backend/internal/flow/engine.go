@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -85,8 +86,6 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 			return
 		}
 		switch node.Type {
-		case "api":
-			// Uma chamada interrompida retoma com a mesma referência persistida.
 		case "menu":
 			var md menuData
 			_ = json.Unmarshal(node.Data, &md)
@@ -146,22 +145,6 @@ func (s *Service) run(ctx context.Context, from, name string, g *Graph, st State
 				return
 			}
 			cur = g.next(cur)
-
-		case "api":
-			// Persistir antes do efeito externo permite repetir com idempotência.
-			if err := s.repo.SaveState(ctx, from, cur, vars); err != nil {
-				return
-			}
-			handle := callAPI(ctx, node.Data, vars)
-			if err := s.repo.SaveData(ctx, from, vars); err != nil {
-				return
-			}
-			next := g.target(cur, handle)
-			if next == "" && handle == "error" {
-				_ = s.repo.Handoff(ctx, from, "", vars)
-				s.send(ctx, from, "Não foi possível confirmar o chamado agora. Um atendente vai conferir por aqui.")
-			}
-			cur = next
 
 		case "condition":
 			var d conditionData
@@ -273,6 +256,9 @@ func keyForLabel(node *Node, input string) string {
 	}
 	return ""
 }
+
+// variablePattern casa {{nome_da_variavel}} nos textos do fluxo.
+var variablePattern = regexp.MustCompile(`\{\{([a-zA-Z0-9_]+)\}\}`)
 
 // render substitui {{var}} pelos valores capturados.
 func render(text string, vars map[string]string) string {

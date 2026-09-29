@@ -24,7 +24,7 @@ function edgeId(e: { source: string; sourceHandle?: string | null; target: strin
   return `${e.source}:${e.sourceHandle ?? ""}->${e.target}`;
 }
 
-const PALETTE: string[] = ["message", "menu", "input", "condition", "action", "api", "handoff", "end"];
+const PALETTE: string[] = ["message", "menu", "input", "condition", "action", "handoff", "end"];
 
 export default function FlowCanvas() {
   const toast = useToast();
@@ -292,28 +292,6 @@ function EditPanel({
           >
             Opção
           </Button>
-        </>
-      )}
-
-      {node.type === "api" && (
-        <>
-          <p className="muted" style={{ fontSize: 12 }}>SIGE-TI · POST /integracao/ordens-servico. Configure o destino e a chave abaixo.</p>
-          <Field label="URL base" hint="Ex.: https://sige-ti.prefeitura.gov.br (sem /integracao/ordens-servico)">
-            <Input value={d.base_url || ""} onChange={(e) => onPatch({ base_url: e.target.value })} placeholder="https://sige-ti.prefeitura.gov.br" />
-          </Field>
-          <Field label="Chave de API" hint={d.api_key_configured ? "Chave salva. Deixe vazio para manter ou digite uma nova para substituir. Ao mudar a URL, informe a chave novamente." : "Informe a chave fornecida pelo SIGE-TI."}>
-            <Input type="password" autoComplete="new-password" value={d.api_key || ""} onChange={(e) => onPatch({ api_key: e.target.value })} placeholder={d.api_key_configured ? "Chave configurada" : "X-API-Key"} />
-          </Field>
-          <Field label="Dados enviados (JSON)" hint="Use {{variavel}} nos valores. Referência única e origem whatsapp são incluídas automaticamente.">
-            <textarea className="textarea mono" style={{ minHeight: 260 }} value={d.body || ""} onChange={(e) => onPatch({ body: e.target.value })} />
-          </Field>
-          <p className="muted" style={{ fontSize: 12 }}>Disponíveis: {"{{_nome}}"} (perfil), {"{{_telefone}}"} e as respostas salvas nas perguntas. Prioridade: baixa, normal ou alta.</p>
-          {["numero", "id", "status"].map((field) => (
-            <Field key={field} label={`Salvar ${field} na variável`}>
-              <Input value={d.response?.[field] || ""} onChange={(e) => onPatch({ response: { ...d.response, [field]: e.target.value.trim() } })} />
-            </Field>
-          ))}
-          <p className="muted" style={{ fontSize: 12 }}>Conecte Sucesso a uma mensagem com {"{{numero}}"}. Em Erro, use uma mensagem ou encaminhe ao atendente. api_http_status e api_erro permitem tratar falhas com condições. Sem saída de erro, encaminha ao atendimento humano.</p>
         </>
       )}
 

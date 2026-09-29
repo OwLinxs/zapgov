@@ -5,9 +5,9 @@ O ZapGov é um **gateway de WhatsApp**: cuida de enviar/receber, mídia, janela 
 24h e status de entrega. O **SIGE** é dono do chamado e do chat — o técnico
 conversa com a pessoa dentro da tela do chamado. As mensagens vão e voltam por API.
 
-> Status: **desenho** (nenhum código escrito ainda). O lado SIGE já foi
-> implementado segundo o contrato em `deploy/GATEWAY.md`/`SIGE-TI.md` anteriores.
-> Esta spec é o par no ZapGov. Ao implementar, atualizar esta seção.
+> Status: **Fase 1 implementada** (texto ponta a ponta) no pacote
+> `backend/internal/gateway`. O lado SIGE já foi implementado segundo este
+> contrato. Fases 2–4 (retry/status, mídia, botão de template) pendentes.
 
 ## Visão geral
 
@@ -217,15 +217,17 @@ CREATE TABLE gateway_sessions (
 - Sem seguir redirects nas chamadas ao SIGE. Timeout curto (15s) e limite de corpo (1 MiB).
 - `GET /v1/chamados` e `POST /v1/mensagens` só do tenant do gateway.
 
-## A REMOVER (substituído por este gateway)
+## REMOVIDO (substituído por este gateway)
 
-O bloco de fluxo "Chamar API" (abertura one-way, sem chat de volta) sai:
+O bloco de fluxo "Chamar API" (abertura one-way, sem chat de volta) foi removido:
 - `backend/internal/flow/api.go`, `api_test.go`, `credentials.go`, `credentials_test.go`
-- WIP de `janela_24h` em `flow/engine.go` e `flow/repository.go` (WindowInfo)
+- `WindowInfo` e o handle do bloco `api` em `flow/engine.go`/`graph.go`/`repository.go`
 - `deploy/SIGE-TI.md`
 - Nó "Chamar API" no editor: `web/components/flow/FlowCanvas.tsx`, `nodes.tsx`
-- Restos de config `SIGE_TI_*` (se houver)
-- `graph.go`: struct/handle do bloco `api`
+
+Sobra inofensiva: `tenants.SealIntegrationSecret`/`OpenIntegrationSecret` (não
+mais usadas; mantidas por serem genéricas). Nós `api` em fluxos antigos passam a
+ser ignorados pelo motor (caem no `default`).
 
 ## Fases de construção (ZapGov)
 
