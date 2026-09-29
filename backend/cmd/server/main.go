@@ -25,6 +25,7 @@ import (
 	"zapgov/backend/internal/database"
 	"zapgov/backend/internal/departments"
 	"zapgov/backend/internal/flow"
+	"zapgov/backend/internal/gateway"
 	"zapgov/backend/internal/kb"
 	"zapgov/backend/internal/labels"
 	"zapgov/backend/internal/messaging"
@@ -335,6 +336,26 @@ func main() {
 	flowSvc := flow.NewService(flowRepo, svc)
 	svc.OnInbound = flowSvc.HandleInbound
 	flow.NewHandler(flowRepo).Register(api, opsOnly)
+
+	// Gateway WhatsApp<->SIGE (relay bidirecional). Só liga quando SIGE_*/GATEWAY_*
+	// estão configurados. No tenant do gateway, o bot cru (abrir/retomar) e o relay
+	// substituem o motor de fluxo; os demais tenants seguem no fluxo normal. Ver
+	// deploy/GATEWAY.md.
+	if cfg.GatewayEnabled() {
+		gwRepo := gateway.NewRepository(pool)
+		gwClient := gateway.NewClient(cfg.SigeBaseURL, cfg.SigeAPIKey, cfg.SigeHMACSecret)
+		gwSvc := gateway.NewService(gwRepo, gwClient, svc)
+		gwTenant := cfg.GatewayTenantID
+		svc.Gateway = func(ctx context.Context, in messaging.IncomingMessage) bool {
+			if tenantctx.From(ctx) != gwTenant {
+				return false // outros tenants seguem no fluxo normal
+			}
+			gwSvc.HandleInbound(ctx, in)
+			return true
+		}
+		gateway.NewHandler(gwRepo, svc, gwTenant, cfg.GatewayInboundAPIKey).Register(app)
+		slog.Info("gateway SIGE ligado", "tenant", gwTenant, "sige", cfg.SigeBaseURL)
+	}
 
 	// Assinatura do atendente no fim das mensagens (config por tenant).
 	msgHandler.SignatureEnabled = func(ctx context.Context) bool {

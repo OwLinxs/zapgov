@@ -83,6 +83,11 @@ type Service struct {
 	// true = consumido (não roda o bot). Ex.: técnico finaliza chamado por botão.
 	OnButtonAction func(ctx context.Context, from, buttonID string) bool
 
+	// Gateway, se definido e devolve true, consumiu a mensagem: é o gateway
+	// WhatsApp<->SIGE (relay/menu do bot cru). Roda antes dos gates de fila/chatbot,
+	// só para o tenant do gateway (a própria função decide e devolve false fora dele).
+	Gateway func(ctx context.Context, in IncomingMessage) bool
+
 	// IsBotExempt, se definido e true para o remetente, não dispara o chatbot/fila
 	// para as mensagens dele (ex.: técnico de campo só abre a janela de 24h para
 	// receber ordens). Ações por botão continuam funcionando.
@@ -376,6 +381,12 @@ func (s *Service) ProcessWebhook(ctx context.Context, body []byte) error {
 		}
 
 		s.emitInbound(ctx, convID, nome, preview)
+
+		// Gateway WhatsApp<->SIGE: no tenant do gateway, o relay/menu consome a
+		// mensagem (não roda fila/chatbot deste ZapGov).
+		if s.Gateway != nil && s.Gateway(ctx, in) {
+			continue
+		}
 
 		// Auto-resposta de ausência (feriado/fim de semana), no máximo 1x por
 		// período (throttle no banco). Não interrompe o fluxo normal.

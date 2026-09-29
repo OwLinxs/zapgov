@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -35,6 +36,14 @@ type Config struct {
 	LogLevel  string // debug | info | warn | error
 	SentryDSN string // vazio = Sentry desligado
 	Env       string // dev | staging | production
+
+	// Gateway WhatsApp <-> SIGE (relay bidirecional de chamados). Ver deploy/GATEWAY.md.
+	// Vazio/0 = gateway desligado (o tenant segue no motor de fluxo normal).
+	GatewayTenantID      int64  // tenant cujo número usa o gateway (T.I.)
+	GatewayInboundAPIKey string // X-API-Key que o SIGE usa ao chamar /v1/*
+	SigeBaseURL          string // base do SIGE (ZapGov chama /v1/chamados e /integracao/zapgov/eventos)
+	SigeAPIKey           string // X-API-Key que o ZapGov envia ao SIGE
+	SigeHMACSecret       string // assina os webhooks ZapGov->SIGE (X-Signature)
 }
 
 // Load lê variáveis de ambiente. O .env é opcional (em produção usa-se o ambiente real).
@@ -55,6 +64,11 @@ func Load() (*Config, error) {
 		LogLevel:              getEnv("LOG_LEVEL", "info"),
 		SentryDSN:             os.Getenv("SENTRY_DSN"),
 		Env:                   getEnv("APP_ENV", "dev"),
+		GatewayTenantID:       int64(getEnvInt("GATEWAY_TENANT_ID", 0)),
+		GatewayInboundAPIKey:  os.Getenv("GATEWAY_INBOUND_API_KEY"),
+		SigeBaseURL:           os.Getenv("SIGE_BASE_URL"),
+		SigeAPIKey:            os.Getenv("SIGE_API_KEY"),
+		SigeHMACSecret:        os.Getenv("SIGE_HMAC_SECRET"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -78,4 +92,19 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+// GatewayEnabled diz se o gateway WhatsApp<->SIGE está configurado.
+func (c *Config) GatewayEnabled() bool {
+	return c.GatewayTenantID > 0 && c.GatewayInboundAPIKey != "" &&
+		c.SigeBaseURL != "" && c.SigeAPIKey != "" && c.SigeHMACSecret != ""
 }
