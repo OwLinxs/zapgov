@@ -13,10 +13,11 @@ import (
 )
 
 type Handler struct {
-	svc         *messaging.Service
-	provider    messaging.MessageProvider
-	verifyToken string
-	Accept      func(context.Context, []Envelope) error
+	svc                   *messaging.Service
+	provider              messaging.MessageProvider
+	verifyToken           string
+	verifyConfiguredToken func(context.Context, string) bool
+	Accept                func(context.Context, []Envelope) error
 	// resolveTenant mapeia o número da Meta (phone_number_id) -> tenant_id.
 	// 0/desconhecido cai no tenant 1.
 	resolveTenant func(phoneNumberID string) int64
@@ -37,6 +38,10 @@ func (h *Handler) SetTenantResolver(fn func(phoneNumberID string) int64) {
 // SetProviderResolver liga a resolução do provider por tenant (HMAC).
 func (h *Handler) SetProviderResolver(fn func(ctx context.Context) messaging.MessageProvider) {
 	h.resolveProvider = fn
+}
+
+func (h *Handler) SetVerifyTokenResolver(fn func(context.Context, string) bool) {
+	h.verifyConfiguredToken = fn
 }
 
 // phoneNumberIDFromBody extrai metadata.phone_number_id do payload da Meta
@@ -79,7 +84,11 @@ func (h *Handler) verify(c *fiber.Ctx) error {
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 
-	if mode == "subscribe" && token == h.verifyToken && h.verifyToken != "" {
+	valid := token == h.verifyToken && h.verifyToken != ""
+	if h.verifyConfiguredToken != nil {
+		valid = h.verifyConfiguredToken(c.Context(), token)
+	}
+	if mode == "subscribe" && valid {
 		return c.SendString(challenge)
 	}
 	return c.SendStatus(fiber.StatusForbidden)

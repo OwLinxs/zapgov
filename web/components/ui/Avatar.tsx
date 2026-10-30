@@ -1,14 +1,3 @@
-const AV_COLORS = [
-  "oklch(0.6 0.13 256)",
-  "oklch(0.62 0.14 152)",
-  "oklch(0.6 0.15 25)",
-  "oklch(0.64 0.13 78)",
-  "oklch(0.6 0.14 300)",
-  "oklch(0.6 0.12 200)",
-  "oklch(0.58 0.15 340)",
-  "oklch(0.6 0.13 130)",
-];
-
 export function initials(name: string): string {
   return name
     .split(" ")
@@ -19,15 +8,32 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-export function Avatar({ name, size = 34 }: { name: string; size?: number }) {
+// Equipe usa brand-soft; cidadão usa o tom neutro (design system → Avatar).
+export function Avatar({
+  name,
+  size = 36,
+  citizen,
+  presence,
+}: {
+  name: string;
+  size?: number;
+  citizen?: boolean;
+  presence?: "on" | "away" | "off";
+}) {
   const safe = name || "?";
-  const idx = safe.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % AV_COLORS.length;
   return (
     <div
-      className="avatar"
-      style={{ width: size, height: size, background: AV_COLORS[idx], fontSize: size * 0.4 }}
+      className={"avatar" + (citizen ? " citizen" : "")}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+      title={safe}
     >
       {initials(safe)}
+      {presence && (
+        <span
+          className={"zg-presence " + (presence === "off" ? "" : presence)}
+          style={{ position: "absolute", right: -1, bottom: -1, width: 10, height: 10, borderRadius: "50%", border: "2px solid var(--presence-ring, var(--bg-surface))" }}
+        />
+      )}
     </div>
   );
 }

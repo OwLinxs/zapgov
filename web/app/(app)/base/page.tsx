@@ -88,10 +88,10 @@ export default function BasePage() {
                       <Icon name="eye" size={12} /> {a.views}
                     </span>
                   </div>
-                  {a.problema && <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>{trecho(a.problema)}</div>}
+                  {a.problema && <div className="muted" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.5 }}>{trecho(a.problema)}</div>}
                   <div className="row center wrap" style={{ gap: 6, marginTop: 8 }}>
-                    {a.categoria && <span className="badge badge-neutral" style={{ fontSize: 10 }}>{a.categoria}</span>}
-                    {(a.tags ?? []).map((t) => <span key={t} className="mono faint" style={{ fontSize: 10 }}>#{t}</span>)}
+                    {a.categoria && <span className="badge badge-neutral" style={{ fontSize: 11 }}>{a.categoria}</span>}
+                    {(a.tags ?? []).map((t) => <span key={t} className="mono faint" style={{ fontSize: 11 }}>#{t}</span>)}
                   </div>
                 </div>
               ))}
@@ -127,7 +127,7 @@ function VerArtigo({ id, podeEditar, onClose, onEditar, onMudou }: {
   }
   async function arquivar() {
     try { await arquivaKbArticle(id); toast({ type: "success", title: "Artigo arquivado" }); onMudou(); onClose(); }
-    catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
 
   if (!a) return <Drawer open onClose={onClose} width={560}><div className="muted" style={{ padding: 24 }}>Carregando…</div></Drawer>;
@@ -147,15 +147,15 @@ function VerArtigo({ id, podeEditar, onClose, onEditar, onMudou }: {
         {a.problema && (
           <div className="col" style={{ gap: 4 }}>
             <span className="field-label">Problema / sintoma</span>
-            <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{a.problema}</div>
+            <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{a.problema}</div>
           </div>
         )}
         <div className="col" style={{ gap: 4 }}>
           <span className="field-label">Solução</span>
-          <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{a.solucao || "—"}</div>
+          <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{a.solucao || "—"}</div>
         </div>
 
-        <div className="muted" style={{ fontSize: 11.5 }}>
+        <div className="muted" style={{ fontSize: 12 }}>
           {a.autor && <>por {a.autor} · </>}atualizado {fmtData(a.atualizado_em)} · {a.views} visualizações
         </div>
 
@@ -194,7 +194,7 @@ function EditorArtigo({ artigo, onClose, onSalvo }: { artigo: ApiKbArticle | nul
       toast({ type: "success", title: artigo ? "Artigo atualizado" : "Artigo criado" });
       onSalvo();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally {
       setSaving(false);
     }

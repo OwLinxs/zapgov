@@ -183,7 +183,7 @@ export default function ContatosPage() {
                   ))}
                 </select>
                 <div className="grow" />
-                <span className="muted" style={{ fontSize: 12.5 }}>
+                <span className="muted" style={{ fontSize: 13 }}>
                   {rows.length} contatos
                 </span>
               </div>
@@ -191,7 +191,7 @@ export default function ContatosPage() {
 
             <div className="card" style={{ overflow: "hidden" }}>
               {erro ? (
-                <EmptyState icon="alertCircle" title="API indisponível" sub={erro} action={<Button size="sm" onClick={load}>Tentar de novo</Button>} />
+                <EmptyState error title="Não foi possível carregar os dados" sub={erro} action={<Button size="sm" onClick={load}>Tentar novamente</Button>} />
               ) : loading ? (
                 <div className="card-pad col" style={{ gap: 10 }}>
                   {[0, 1, 2, 3].map((i) => (
@@ -219,7 +219,7 @@ export default function ContatosPage() {
                       <tr key={c.id} onClick={() => setActive(c)} style={{ cursor: "pointer" }}>
                         <td className="strong">
                           <div className="row center" style={{ gap: 10 }}>
-                            <Avatar name={c.nome} size={30} />
+                            <Avatar name={c.nome} size={32} citizen />
                             {c.nome}
                           </div>
                         </td>
@@ -278,10 +278,10 @@ export default function ContatosPage() {
             </div>
             <div className="scroll-y grow" style={{ padding: 20 }}>
               <div className="col center" style={{ gap: 10, paddingBottom: 18, borderBottom: "1px solid var(--border-subtle)" }}>
-                <Avatar name={active.nome} size={64} />
+                <Avatar name={active.nome} size={48} citizen />
                 <div className="col center" style={{ gap: 2 }}>
-                  <div style={{ fontSize: 17, fontWeight: 700 }}>{active.nome}</div>
-                  <span className="mono" style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{active.nome}</div>
+                  <span className="mono" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
                     {active.telefone}
                   </span>
                 </div>
@@ -298,7 +298,7 @@ export default function ContatosPage() {
                   ] as [string, string, boolean][]
                 ).map((r, i) => (
                   <div key={i} className="row between center" style={{ padding: "11px 0", borderBottom: "1px solid var(--border-subtle)" }}>
-                    <span className="muted" style={{ fontSize: 12.5 }}>
+                    <span className="muted" style={{ fontSize: 13 }}>
                       {r[0]}
                     </span>
                     <span className={(r[2] ? "mono " : "") + "strong"} style={{ fontSize: 13 }}>

@@ -17,8 +17,8 @@ export function Logo({ size = 30, showText = true }: { size?: number; showText?:
         <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none">
           <path
             d="M13 2 4 13h7l-1 9 10-12h-7l1-8z"
-            fill="white"
-            stroke="white"
+            fill="var(--on-brand)"
+            stroke="var(--on-brand)"
             strokeWidth={1}
             strokeLinejoin="round"
           />
@@ -26,12 +26,12 @@ export function Logo({ size = 30, showText = true }: { size?: number; showText?:
       </div>
       {showText && (
         <div className="col" style={{ gap: 0, lineHeight: 1.1 }}>
-          <div style={{ fontWeight: 800, fontSize: 16.5, letterSpacing: "-0.04em" }}>ZapGov</div>
+          <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.01em" }}>ZapGov</div>
           <div
             style={{
               fontSize: 9.5,
               fontWeight: 600,
-              color: "var(--text-faint)",
+              color: "var(--text-tertiary)",
               letterSpacing: "0.08em",
               textTransform: "uppercase",
             }}

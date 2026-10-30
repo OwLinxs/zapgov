@@ -24,7 +24,7 @@ export function StatusBadge({ status, dot }: { status: string; dot?: boolean }) 
   const s = STATUS[status] || { label: status, cls: "badge-neutral", icon: null };
   return (
     <span className={"badge " + s.cls}>
-      {dot ? <span className="dot" /> : s.icon ? <Icon name={s.icon} size={12} /> : null}
+      {dot ? <span className="dot" /> : s.icon ? <Icon name={s.icon} size={14} stroke={2} /> : null}
       {s.label}
     </span>
   );

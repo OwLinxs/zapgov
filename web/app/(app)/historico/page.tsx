@@ -98,6 +98,7 @@ export default function HistoricoPage() {
   const totalEnv = list.reduce((a, d) => a + d.enviadas, 0);
   const totalEntr = list.reduce((a, d) => a + d.entregues, 0);
   const totalFalhas = list.reduce((a, d) => a + d.falhas, 0);
+  const pct = (n: number, total: number) => (total > 0 ? Math.min(100, (n / total) * 100) + "%" : "0%");
 
   const stats: [string, string, IconName, string, string][] = [
     ["Disparos", list.length.toLocaleString("pt-BR"), "send", "var(--brand-text)", "var(--brand-soft)"],
@@ -109,41 +110,35 @@ export default function HistoricoPage() {
   return (
     <>
       <Topbar
-        title="Histórico de Disparos"
-        sub="Todos os envios registrados"
+        title="Campanhas"
+        sub="Disparos em massa enviados e agendados"
         actions={
           <>
-            <Button variant="secondary" icon="download" onClick={exportar} aria-disabled={list.length === 0}>
+            <Button variant="secondary" size="sm" icon="download" onClick={exportar} disabled={list.length === 0}>
               Exportar CSV
             </Button>
-            <Button variant="secondary" icon="refresh" onClick={load}>
-              Atualizar
-            </Button>
-            <Button variant="primary" icon="send" onClick={() => router.push("/disparo")}>
-              Novo Disparo
+            <Button variant="ghost" size="sm" icon="refresh" onClick={load} aria-label="Atualizar" />
+            <Button variant="primary" size="sm" icon="send" onClick={() => router.push("/disparo")}>
+              Novo disparo
             </Button>
           </>
         }
       />
       <div className="content">
-        <div className="content-pad col" style={{ gap: 16 }}>
-          <div className="kpi-grid">
+        <div className="content-pad col" style={{ gap: 20, maxWidth: 1280 }}>
+          <div className="zg-card row wrap" style={{ boxShadow: "none", alignItems: "stretch" }}>
             {stats.map((s, i) => (
-              <div key={i} className="card kpi" style={{ gap: 8 }}>
-                <div className="kpi-top">
-                  <span className="kpi-label">{s[0]}</span>
-                  <span className="kpi-ico" style={{ background: s[4], color: s[3] }}>
-                    <Icon name={s[2]} size={15} />
-                  </span>
+              <div key={i} style={{ flex: "1 1 160px", padding: "14px 20px", borderRight: i < stats.length - 1 ? "1px solid var(--border-subtle)" : 0 }}>
+                <div className="row center" style={{ gap: 6, fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 }}>
+                  <Icon name={s[2]} size={14} style={{ color: s[3] }} />
+                  {s[0]}
                 </div>
-                <div className="kpi-value" style={{ fontSize: 24 }}>
-                  {s[1]}
-                </div>
+                <div className="mono" style={{ fontSize: 24, lineHeight: "30px", fontWeight: 600 }}>{s[1]}</div>
               </div>
             ))}
           </div>
 
-          <div className="card card-pad">
+          <div className="card card-pad" style={{ padding: "12px 16px" }}>
             <div className="toolbar">
               <div className="toolbar-search">
                 <Input icon="search" placeholder="Buscar por template ou operador…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -161,7 +156,7 @@ export default function HistoricoPage() {
                 ))}
               </select>
               <div className="grow" />
-              <span className="muted" style={{ fontSize: 12.5 }}>
+              <span className="muted" style={{ fontSize: 13 }}>
                 {rows.length} resultados
               </span>
             </div>
@@ -169,7 +164,7 @@ export default function HistoricoPage() {
 
           <div className="card" style={{ overflow: "hidden" }}>
             {erro ? (
-              <EmptyState icon="alertCircle" title="API indisponível" sub={erro} action={<Button size="sm" onClick={load}>Tentar de novo</Button>} />
+              <EmptyState error title="Não foi possível carregar as campanhas" sub={erro} action={<Button size="sm" icon="refresh" onClick={load}>Tentar novamente</Button>} />
             ) : loading ? (
               <div className="card-pad col" style={{ gap: 10 }}>
                 {[0, 1, 2].map((i) => (
@@ -177,7 +172,7 @@ export default function HistoricoPage() {
                 ))}
               </div>
             ) : rows.length === 0 ? (
-              <EmptyState icon="send" title="Nenhum disparo ainda" sub="Crie um disparo para vê-lo aqui." action={<Button size="sm" variant="primary" onClick={() => router.push("/disparo")}>Novo Disparo</Button>} />
+              <EmptyState icon="megaphone" title="Nenhuma campanha ainda" sub="Quando você enviar ou agendar um disparo, ele aparece aqui com a entrega e a leitura." action={<Button size="sm" variant="primary" icon="send" onClick={() => router.push("/disparo")}>Novo disparo</Button>} />
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table className="ds-table">
@@ -188,7 +183,7 @@ export default function HistoricoPage() {
                       <th>Template</th>
                       <th>Setor</th>
                       <th className="num">Enviadas</th>
-                      <th className="num">Entrega</th>
+                      <th>Entrega</th>
                       <th className="num">Lidas</th>
                       <th className="num">Falhas</th>
                       <th>Status</th>
@@ -203,40 +198,42 @@ export default function HistoricoPage() {
                         <Fragment key={d.id}>
                           <tr className="expandable" onClick={() => setExpand(isOpen ? null : d.id)}>
                             <td>
-                              <span className="icon" style={{ color: "var(--text-faint)", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>
+                              <span className="icon" style={{ color: "var(--text-tertiary)", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>
                                 <Icon name="chevronRight" size={15} />
                               </span>
                             </td>
-                            <td className="mono" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                            <td className="mono" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                               {fmtData(d.criado_em)}
                             </td>
                             <td className="strong">
                               {d.template}
-                              <span className="mono faint" style={{ fontSize: 10.5 }}>
+                              <span className="mono faint" style={{ fontSize: 11 }}>
                                 {" "}
                                 · {d.language}
                               </span>
                             </td>
                             <td>
                               <span className="tag">
-                                <span className="tag-dot" style={{ background: SETOR_COR[d.setor] || "var(--text-faint)" }} /> {d.setor}
+                                <span className="tag-dot" style={{ background: SETOR_COR[d.setor] || "var(--text-tertiary)" }} /> {d.setor}
                               </span>
                             </td>
                             <td className="num mono strong">{d.enviadas.toLocaleString("pt-BR")}</td>
-                            <td className="num">
-                              <div className="col" style={{ gap: 3, alignItems: "flex-end" }}>
+                            <td>
+                              <div className="row center" style={{ gap: 8 }} title={`Lidas ${d.lidas} · Entregues ${d.entregues} · Falhas ${d.falhas}`}>
+                                <span className="zg-progress">
+                                  <span className="read" style={{ width: pct(d.lidas, d.enviadas) }} />
+                                  <span className="delivered" style={{ width: pct(Math.max(0, d.entregues - d.lidas), d.enviadas) }} />
+                                  <span className="failed" style={{ width: pct(d.falhas, d.enviadas) }} />
+                                </span>
                                 <span className="mono" style={{ fontSize: 12 }}>
                                   {taxaE.toFixed(0)}%
                                 </span>
-                                <div className="mini-bar" style={{ width: 56 }}>
-                                  <div style={{ width: taxaE + "%", background: "var(--st-delivered)" }} />
-                                </div>
                               </div>
                             </td>
-                            <td className="num mono" style={{ color: d.lidas > 0 ? "var(--wa)" : "var(--text-faint)" }}>
+                            <td className="num mono" style={{ color: d.lidas > 0 ? "var(--st-read)" : "var(--text-tertiary)" }}>
                               {d.lidas || "0"}
                             </td>
-                            <td className="num mono" style={{ color: d.falhas > 0 ? "var(--st-failed)" : "var(--text-faint)" }}>
+                            <td className="num mono" style={{ color: d.falhas > 0 ? "var(--st-failed)" : "var(--text-tertiary)" }}>
                               {d.falhas || "0"}
                             </td>
                             <td>
@@ -258,7 +255,7 @@ export default function HistoricoPage() {
                                       ["Total", d.total, "var(--text-primary)"],
                                       ["Enviadas", d.enviadas, "var(--st-delivered)"],
                                       ["Entregues", d.entregues, "var(--st-read)"],
-                                      ["Lidas", d.lidas, "var(--wa)"],
+                                      ["Lidas", d.lidas, "var(--st-read)"],
                                       ["Falhas", d.falhas, "var(--st-failed)"],
                                       ["Descadastrados", d.puladas || 0, "var(--text-secondary)"],
                                       ["Conferir envio", d.revisao || 0, "var(--st-failed)"],

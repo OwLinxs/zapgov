@@ -15,11 +15,14 @@ import {
 } from "@/components/ui";
 import { SETOR_COR } from "@/lib/data";
 import { useAuth } from "@/lib/auth";
+import { useMetaConn } from "@/lib/org";
 import {
   getKpis, getVolume, getActivity, getAtendentes, getSatisfacao, getHeatmap,
   type ApiKpis, type ApiVolumePoint, type ApiAtividade, type ApiAtendenteStat, type ApiSatisfacao, type ApiHeatCell,
 } from "@/lib/api";
 import { IconName } from "@/lib/icons";
+
+const fmt1 = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 function KpiCard({
   label,
@@ -27,36 +30,33 @@ function KpiCard({
   suffix,
   delta,
   icon,
-  color,
+  bomQuandoSobe = true,
 }: {
   label: string;
   value: string;
   suffix?: string;
   delta: number;
   icon: IconName;
-  color: { c: string; b: string };
+  bomQuandoSobe?: boolean; // falhas: subir é ruim
 }) {
   const up = delta >= 0;
+  const bom = up === bomQuandoSobe;
   return (
-    <div className="card kpi">
-      <div className="kpi-top">
-        <span className="kpi-label">{label}</span>
-        <span className="kpi-ico" style={{ background: color.b, color: color.c }}>
-          <Icon name={icon} size={16} />
-        </span>
+    <div className="zg-card zg-kpi">
+      <div className="zg-kpi-head">
+        {label}
+        <Icon name={icon} size={16} />
       </div>
-      <div className="row between" style={{ alignItems: "flex-end" }}>
-        <div className="kpi-value">
-          {value}
-          {suffix && <span style={{ fontSize: 16, color: "var(--text-tertiary)", marginLeft: 1 }}>{suffix}</span>}
-        </div>
+      <div className="zg-kpi-value">
+        {value}
+        {suffix && <small>{suffix}</small>}
       </div>
-      <div className="row center" style={{ gap: 7 }}>
-        <span className={"kpi-delta " + (up ? "kpi-up" : "kpi-down")}>
-          <Icon name={up ? "trendUp" : "trendDown"} size={13} />
-          {(up ? "+" : "") + delta + "%"}
+      <div className="zg-kpi-foot">
+        <span className={"zg-delta " + (bom ? "zg-delta--up" : "zg-delta--down")}>
+          <Icon name={up ? "trendUp" : "trendDown"} size={14} stroke={2} />
+          {(up ? "+" : "") + fmt1(delta) + "%"}
         </span>
-        <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>vs. ontem</span>
+        vs. ontem
       </div>
     </div>
   );
@@ -91,13 +91,13 @@ function HeatmapCard({ cells }: { cells: ApiHeatCell[] }) {
         <div style={{ display: "grid", gridTemplateColumns: "34px repeat(24, 1fr)", gap: 3, minWidth: 640 }}>
           <span />
           {Array.from({ length: 24 }, (_, h) => (
-            <span key={h} className="mono faint" style={{ fontSize: 9.5, textAlign: "center" }}>
+            <span key={h} className="mono faint" style={{ fontSize: 11, textAlign: "center" }}>
               {h % 3 === 0 ? h : ""}
             </span>
           ))}
           {DIAS.map((d, dia) => (
             <Fragment key={d}>
-              <span className="faint" style={{ fontSize: 10.5, fontWeight: 600, alignSelf: "center" }}>{d}</span>
+              <span className="faint" style={{ fontSize: 12, fontWeight: 500, alignSelf: "center" }}>{d}</span>
               {Array.from({ length: 24 }, (_, h) => {
                 const v = mapa.get(dia + ":" + h) || 0;
                 const pct = max > 0 ? Math.round((v / max) * 100) : 0;
@@ -107,7 +107,7 @@ function HeatmapCard({ cells }: { cells: ApiHeatCell[] }) {
                     title={`${d} ${String(h).padStart(2, "0")}h — ${v} mensagem${v === 1 ? "" : "s"}`}
                     style={{
                       height: 16, borderRadius: 3,
-                      background: v === 0 ? "var(--bg-sunken)" : `color-mix(in oklch, var(--wa) ${Math.max(pct, 12)}%, var(--bg-sunken))`,
+                      background: v === 0 ? "var(--bg-sunken)" : `color-mix(in srgb, var(--brand) ${Math.max(pct, 12)}%, var(--bg-sunken))`,
                     }}
                   />
                 );
@@ -159,34 +159,46 @@ export default function DashboardPage() {
   const trocarPeriodo = (p: string) => setPeriodo(p as "hora" | "dia");
 
   const falha = kpis ? Math.max(0, 100 - kpis.taxaEntrega) : 0;
+  const conn = useMetaConn();
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 
   return (
     <>
-      <Topbar
-        title="Dashboard"
-        sub={"Visão geral de hoje — " + new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
-        actions={
-          <>
-            <Button variant="secondary" icon="refresh" onClick={() => load(periodo)}>
+      <Topbar title="Dashboard" />
+      <div className="content">
+        <div className="content-pad col" style={{ gap: 24, maxWidth: 1280 }}>
+          <div className="row wrap" style={{ alignItems: "flex-end", gap: 16 }}>
+            <div style={{ flex: "1 1 300px" }}>
+              <h2 className="t-display">
+                {saudacao}
+                {user?.nome ? ", " + user.nome.split(" ")[0] : ""}
+              </h2>
+              <p style={{ marginTop: 4, color: "var(--text-secondary)" }}>{hoje.charAt(0).toUpperCase() + hoje.slice(1)}</p>
+            </div>
+            <Button variant="secondary" size="sm" icon="refresh" onClick={() => load(periodo)}>
               Atualizar
             </Button>
-            <Button variant="primary" icon="send" onClick={() => router.push("/disparo")}>
-              Novo Disparo
+            <Button variant="primary" size="sm" icon="send" onClick={() => router.push("/disparo")}>
+              Novo disparo
             </Button>
-          </>
-        }
-      />
-      <div className="content">
-        <div className="content-pad col" style={{ gap: 16 }}>
+          </div>
           <div className="kpi-grid">
             {!kpis ? (
-              [0, 1, 2, 3].map((i) => <Skel key={i} h={118} />)
+              [0, 1, 2, 3].map((i) => (
+                <div key={i} className="zg-card zg-kpi">
+                  <Skel w="50%" h={14} />
+                  <Skel w="40%" h={28} />
+                  <Skel w="60%" h={12} />
+                </div>
+              ))
             ) : (
               <>
-                <KpiCard label="Enviadas hoje" value={kpis.enviadasHoje.toLocaleString("pt-BR")} delta={kpis.enviadasDelta} icon="send" color={{ c: "var(--brand-text)", b: "var(--brand-soft)" }} />
-                <KpiCard label="Taxa de entrega" value={kpis.taxaEntrega.toFixed(1)} suffix="%" delta={kpis.entregaDelta} icon="checkDouble" color={{ c: "var(--st-delivered)", b: "var(--st-delivered-soft)" }} />
-                <KpiCard label="Taxa de leitura" value={kpis.taxaLeitura.toFixed(1)} suffix="%" delta={kpis.leituraDelta} icon="eye" color={{ c: "var(--st-read)", b: "var(--st-read-soft)" }} />
-                <KpiCard label="Falhas" value={kpis.falhas.toLocaleString("pt-BR")} delta={kpis.falhasDelta} icon="alertCircle" color={{ c: "var(--st-failed)", b: "var(--st-failed-soft)" }} />
+                <KpiCard label="Enviadas hoje" value={kpis.enviadasHoje.toLocaleString("pt-BR")} delta={kpis.enviadasDelta} icon="send" />
+                <KpiCard label="Taxa de entrega" value={fmt1(kpis.taxaEntrega)} suffix="%" delta={kpis.entregaDelta} icon="checkDouble" />
+                <KpiCard label="Taxa de leitura" value={fmt1(kpis.taxaLeitura)} suffix="%" delta={kpis.leituraDelta} icon="eye" />
+                <KpiCard label="Falhas" value={kpis.falhas.toLocaleString("pt-BR")} delta={kpis.falhasDelta} icon="alertCircle" bomQuandoSobe={false} />
               </>
             )}
           </div>
@@ -203,14 +215,14 @@ export default function DashboardPage() {
                   value={periodo}
                   onChange={trocarPeriodo}
                   options={[
-                    { value: "hora", label: "Por hora" },
+                    { value: "hora", label: "Hoje" },
                     { value: "dia", label: "7 dias" },
                   ]}
                 />
               </div>
               <div className="card-pad">
                 {dados.length === 0 ? (
-                  <div className="col center" style={{ height: 188, justifyContent: "center", color: "var(--text-faint)", fontSize: 13 }}>
+                  <div className="col center" style={{ height: 188, justifyContent: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
                     {loading ? "Carregando…" : "Sem mensagens no período"}
                   </div>
                 ) : (
@@ -236,16 +248,16 @@ export default function DashboardPage() {
                 <Donut value={kpis?.taxaLeitura ?? 0} color="var(--st-read)" size={128} stroke={12} label="lidas" />
                 <div className="row" style={{ gap: 20, fontSize: 12 }}>
                   <div className="col center" style={{ gap: 1 }}>
-                    <span className="mono" style={{ fontWeight: 700, fontSize: 15 }}>
-                      {(kpis?.taxaEntrega ?? 0).toFixed(1)}%
+                    <span className="mono" style={{ fontWeight: 600, fontSize: 15 }}>
+                      {fmt1(kpis?.taxaEntrega ?? 0)}%
                     </span>
                     <span className="faint" style={{ fontSize: 11 }}>
                       entregue
                     </span>
                   </div>
                   <div className="col center" style={{ gap: 1 }}>
-                    <span className="mono" style={{ fontWeight: 700, fontSize: 15, color: "var(--st-failed)" }}>
-                      {falha.toFixed(1)}%
+                    <span className="mono" style={{ fontWeight: 600, fontSize: 15, color: "var(--st-failed)" }}>
+                      {fmt1(falha)}%
                     </span>
                     <span className="faint" style={{ fontSize: 11 }}>
                       falha
@@ -257,11 +269,11 @@ export default function DashboardPage() {
                 <div className="card card-pad col" style={{ gap: 8 }}>
                   <div className="card-title">Satisfação (30 dias)</div>
                   <div className="row center" style={{ gap: 14 }}>
-                    <span className="mono" style={{ fontSize: 34, fontWeight: 700, color: "var(--st-pending)" }}>
-                      {sat.media > 0 ? sat.media.toFixed(1) : "—"}
+                    <span className="zg-kpi-value">
+                      {sat.media > 0 ? fmt1(sat.media) : "—"}
+                      <small>/5</small>
                     </span>
                     <div className="col" style={{ gap: 1, fontSize: 12, color: "var(--text-tertiary)" }}>
-                      <span>{"⭐".repeat(Math.round(sat.media || 0))}</span>
                       <span>{sat.respostas} respostas de {sat.enviadas} pesquisas ({sat.enviadas > 0 ? Math.round((sat.respostas / sat.enviadas) * 100) : 0}%)</span>
                     </div>
                   </div>
@@ -269,21 +281,22 @@ export default function DashboardPage() {
               )}
               <div className="card card-pad col" style={{ gap: 12 }}>
                 <div className="row between center">
-                  <div className="card-title">Status da conexão</div>
-                  <span className="badge badge-read">
-                    <span className="dot" /> Operacional
-                  </span>
+                  <div className="card-title">Conexão com a Meta</div>
+                  {conn &&
+                    (conn === "ok" ? (
+                      <span className="badge badge-read">
+                        <Icon name="checkCircle" size={14} /> Conectado
+                      </span>
+                    ) : (
+                      <span className="badge badge-failed">
+                        <Icon name="alertCircle" size={14} /> Sem credenciais
+                      </span>
+                    ))}
                 </div>
-                {[["Meta Cloud API"], ["Webhook de entrada"], ["Número verde"]].map((r, i) => (
-                  <div key={i} className="row between center" style={{ fontSize: 12.5 }}>
-                    <span className="t-sec">{r[0]}</span>
-                    <span className="row center" style={{ gap: 6, color: "var(--st-read)", fontWeight: 600 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--st-read)" }} /> OK
-                    </span>
-                  </div>
-                ))}
-                <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
-                  Última verificação há 30s · 99.98% uptime (30d)
+                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                  {conn === "err"
+                    ? "Cadastre as credenciais em Configurações → WhatsApp / Meta para enviar e receber mensagens."
+                    : "Meta Cloud API · WhatsApp Business. Acompanhe a entrega pelas taxas acima."}
                 </div>
               </div>
             </div>
@@ -298,15 +311,15 @@ export default function DashboardPage() {
               <div className="card-title">Atividade recente</div>
               <a
                 className="row center"
-                style={{ gap: 5, fontSize: 12.5, color: "var(--brand-text)", fontWeight: 600, cursor: "pointer" }}
+                style={{ gap: 4, fontSize: 13, color: "var(--brand-text)", fontWeight: 600, cursor: "pointer" }}
                 onClick={() => router.push("/historico")}
               >
-                Ver histórico completo <Icon name="chevronRight" size={14} />
+                Ver campanhas <Icon name="chevronRight" size={14} />
               </a>
             </div>
             <div>
               {atividade.length === 0 && (
-                <div style={{ padding: "26px 18px", textAlign: "center", color: "var(--text-faint)", fontSize: 13 }}>
+                <div style={{ padding: "26px 18px", textAlign: "center", color: "var(--text-tertiary)", fontSize: 13 }}>
                   {loading ? "Carregando…" : "Nenhuma atividade ainda"}
                 </div>
               )}
@@ -315,7 +328,7 @@ export default function DashboardPage() {
                   a.tipo === "disparo"
                     ? { ic: "send" as IconName, c: "var(--brand-text)", b: "var(--brand-soft)" }
                     : a.tipo === "resposta"
-                    ? { ic: "reply" as IconName, c: "var(--wa)", b: "var(--wa-soft)" }
+                    ? { ic: "reply" as IconName, c: "var(--wa-deep)", b: "var(--wa-soft)" }
                     : { ic: "alertCircle" as IconName, c: "var(--st-failed)", b: "var(--st-failed-soft)" };
                 return (
                   <div
@@ -346,7 +359,7 @@ export default function DashboardPage() {
                     <span className="tag" style={{ borderColor: "transparent", background: "transparent" }}>
                       <span className="tag-dot" style={{ background: SETOR_COR[a.setor] || "var(--text-faint)" }} /> {a.setor}
                     </span>
-                    <span style={{ fontSize: 11.5, color: "var(--text-faint)", whiteSpace: "nowrap", minWidth: 64, textAlign: "right" }}>
+                    <span style={{ fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap", minWidth: 64, textAlign: "right" }}>
                       {a.tempo}
                     </span>
                   </div>
@@ -386,10 +399,10 @@ export default function DashboardPage() {
                           <Avatar name={a.nome} size={28} /> {a.nome}
                         </div>
                       </td>
-                      <td style={{ textAlign: "right" }} className="mono">{a.atendimentos}</td>
-                      <td style={{ textAlign: "right" }} className="mono">{a.mensagens}</td>
-                      <td style={{ textAlign: "right" }} className="mono">{a.tempo_medio_min > 0 ? a.tempo_medio_min.toFixed(0) + " min" : "—"}</td>
-                      <td style={{ textAlign: "right" }} className="mono">{a.satisfacao > 0 ? "⭐ " + a.satisfacao.toFixed(1) : "—"}</td>
+                      <td className="num">{a.atendimentos.toLocaleString("pt-BR")}</td>
+                      <td className="num">{a.mensagens.toLocaleString("pt-BR")}</td>
+                      <td className="num">{a.tempo_medio_min > 0 ? a.tempo_medio_min.toFixed(0) + " min" : "—"}</td>
+                      <td className="num">{a.satisfacao > 0 ? fmt1(a.satisfacao) + "/5" : "—"}</td>
                     </tr>
                   ))}
                 </tbody>

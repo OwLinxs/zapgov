@@ -6,7 +6,7 @@ export function Drawer({
   open,
   onClose,
   children,
-  width = 440,
+  width = 400,
 }: {
   open: boolean;
   onClose: () => void;

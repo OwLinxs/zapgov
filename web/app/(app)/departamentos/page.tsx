@@ -48,7 +48,7 @@ function NovoModal({ open, onClose, onCreated }: { open: boolean; onClose: () =>
       onCreated();
       onClose();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -127,7 +127,7 @@ export default function DepartamentosPage() {
       setDelAlvo(null);
       load();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -146,7 +146,7 @@ export default function DepartamentosPage() {
         <div className="content-pad col" style={{ gap: 16, maxWidth: 720 }}>
           {erro ? (
             <div className="card">
-              <EmptyState icon="alertCircle" title="API indisponível" sub={erro} action={<Button size="sm" onClick={load}>Tentar de novo</Button>} />
+              <EmptyState error title="Não foi possível carregar os dados" sub={erro} action={<Button size="sm" onClick={load}>Tentar novamente</Button>} />
             </div>
           ) : loading ? (
             <div className="card card-pad col" style={{ gap: 12 }}>

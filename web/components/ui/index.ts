@@ -12,4 +12,4 @@ export type { ToastInput, ToastType } from "./Toast";
 export { Dropdown } from "./Dropdown";
 export { WaBubble, highlightVars } from "./WaBubble";
 export { BarChart, Donut, Spark } from "./charts";
-export { Skel, EmptyState } from "./feedback";
+export { Skel, EmptyState, Alert } from "./feedback";

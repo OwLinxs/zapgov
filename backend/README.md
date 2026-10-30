@@ -65,13 +65,33 @@ recupera eventos perdidos durante desconexões. Pub/Sub não é armazenamento.
 - Somente o órgão 1 pode usar o provider do ambiente. Outros órgãos sem
   credenciais próprias falham de forma explícita; não usam o número da plataforma.
 
+## Configuração Meta pelo painel
+
+O administrador de cada órgão configura Phone Number ID, WABA ID, token,
+App Secret, versão da API e Webhook Verify Token em **Configurações → WhatsApp /
+Meta**. A rota autenticada `PUT /settings/meta` exige papel `admin` e grava os
+segredos cifrados na tabela `tenants`. `GET /settings/meta` devolve IDs (mascarados
+para quem não é admin), versão, origem e indicadores de presença dos segredos;
+não devolve os valores secretos.
+Campos secretos vazios em uma atualização preservam os já cadastrados.
+
+O provider de mensagens e o cliente de templates resolvem as credenciais do
+órgão no banco durante o uso, sem reiniciar API ou worker após uma alteração.
+O handshake `GET /webhook` aceita o Verify Token salvo para um órgão ativo.
+No órgão 1, as variáveis `WHATSAPP_*` servem como fallback enquanto não houver
+Phone Number ID e token no banco. `WEBHOOK_VERIFY_TOKEN` do ambiente serve como
+fallback enquanto não houver Verify Token no banco. Depois de cadastrar o
+Verify Token no painel, o token antigo do ambiente deixa de
+validar o handshake. `META_CREDENTIALS_KEY` continua obrigatória em produção
+para cifrar e abrir os valores salvos.
+
 ## Desenvolvimento
 
 Veja [ambiente local](../deploy/DEV.md). Na raiz do projeto:
 
 ```sh
 cp backend/.env.dev.example backend/.env.dev
-# Configure SEED_ADMIN_PASSWORD e, para cadastrar credenciais, META_CREDENTIALS_KEY.
+# Configure SEED_ADMIN_PASSWORD e META_CREDENTIALS_KEY antes de cadastrar credenciais.
 make dev-up
 make api
 # Em outros terminais:

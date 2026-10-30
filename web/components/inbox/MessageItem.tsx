@@ -1,12 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { WaBubble, Icon } from "@/components/ui";
+import { Icon } from "@/components/ui";
 import { fetchMediaBlob, mapStatus, hhmm, type ApiMessage } from "@/lib/api";
 
 const EMOJIS = ["👍", "👎", "❤️", "😂", "😉", "😮", "😢", "🙏", "😊", "👏", "🎉", "✅", "❌", "🔥", "💯", "😍", "🤝", "😡", "🤔"];
 
-// ReactionWrap envolve a bolha: badge da reação atual + ações no hover
+// Ticks: tiques/ícone de status ao lado do horário (mesma cor do status em todo o app).
+export function Ticks({ status }: { status: string }) {
+  const st = mapStatus(status);
+  const map: Record<string, { cls: string; icon: string; label: string }> = {
+    enviado: { cls: "sent", icon: "check", label: "Enviado" },
+    entregue: { cls: "delivered", icon: "checkDouble", label: "Entregue" },
+    lido: { cls: "read", icon: "checkDouble", label: "Lido" },
+    falhou: { cls: "failed", icon: "alertCircle", label: "Falhou" },
+    pendente: { cls: "pending", icon: "clock", label: "Pendente" },
+  };
+  const t = map[st] ?? map.enviado;
+  return (
+    <span className={"zg-ticks zg-ticks--" + t.cls} title={t.label} aria-label={t.label}>
+      <Icon name={t.icon} size={16} stroke={2} />
+    </span>
+  );
+}
+
+// ReactionWrap envolve a bolha: reação atual + ações no hover
 // (reagir só em mensagens do cidadão; responder em qualquer mensagem real).
 function ReactionWrap({ m, onReact, onReply, children }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void; children: React.ReactNode }) {
   const [hover, setHover] = useState(false);
@@ -14,67 +32,56 @@ function ReactionWrap({ m, onReact, onReply, children }: { m: ApiMessage; onReac
   const podeReagir = !!onReact && m.direction === "in" && !!m.wa_message_id;
   // Só mensagens com wamid real podem ser citadas (notas internas não).
   const podeResponder = !!onReply && m.direction !== "note" && m.wa_message_id.startsWith("wamid");
+  const out = m.direction === "out";
 
   return (
     <div
+      className={"zg-msg " + (out ? "zg-msg--out" : "zg-msg--in")}
       style={{ position: "relative" }}
       onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => { setHover(false); setOpen(false); }}
+      onMouseLeave={() => {
+        setHover(false);
+        setOpen(false);
+      }}
     >
       {children}
       {m.reaction && (
-        <div className={"wa-row " + (m.direction === "out" ? "out" : "in")} style={{ marginTop: -8 }}>
-          <span
-            style={{
-              fontSize: 13, background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)",
-              borderRadius: 99, padding: "1px 7px", boxShadow: "0 1px 2px rgba(0,0,0,.12)",
-              cursor: podeReagir ? "pointer" : "default",
-            }}
-            title={podeReagir ? "Clique para remover a reação" : undefined}
-            onClick={() => podeReagir && onReact!(m.wa_message_id, "")}
-          >
-            {m.reaction}
-          </span>
-        </div>
+        <button
+          className="zg-msg-react"
+          style={{ cursor: podeReagir ? "pointer" : "default" }}
+          title={podeReagir ? "Clique para remover a reação" : undefined}
+          aria-label={"Reação " + m.reaction}
+          onClick={() => podeReagir && onReact!(m.wa_message_id, "")}
+        >
+          {m.reaction}
+        </button>
       )}
       {(podeReagir || podeResponder) && hover && (
-        <div className="row center" style={{ position: "absolute", top: 2, left: "calc(100% - 270px)", zIndex: 5, gap: 4 }}>
+        <div className="row center" style={{ position: "absolute", top: 0, [out ? "right" : "left"]: "calc(100% + 6px)", zIndex: 5, gap: 4 }}>
           {podeResponder && !open && (
-            <button
-              className="btn btn-ghost btn-icon btn-sm"
-              style={{ background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)", borderRadius: 99 }}
-              title="Responder (citar)"
-              onClick={() => onReply!(m)}
-            >
-              <Icon name="reply" size={15} />
+            <button className="btn btn-secondary btn-icon btn-sm" style={{ borderRadius: 99 }} aria-label="Responder citando" title="Responder (citar)" onClick={() => onReply!(m)}>
+              <Icon name="reply" size={14} />
             </button>
           )}
           {podeReagir && !open && (
-            <button
-              className="btn btn-ghost btn-icon btn-sm"
-              style={{ background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)", borderRadius: 99 }}
-              title="Reagir"
-              onClick={() => setOpen(true)}
-            >
-              <Icon name="smile" size={15} />
+            <button className="btn btn-secondary btn-icon btn-sm" style={{ borderRadius: 99 }} aria-label="Reagir" title="Reagir" onClick={() => setOpen(true)}>
+              <Icon name="smile" size={14} />
             </button>
           )}
           {podeReagir && open && (
-            <div
-              className="row wrap"
-              style={{
-                gap: 2, width: 216, background: "var(--bg-elevated, var(--bg-sunken))", border: "1px solid var(--border-subtle)",
-                borderRadius: 12, padding: "6px 8px", boxShadow: "0 4px 14px rgba(0,0,0,.18)",
-              }}
-            >
+            <div className="row wrap" style={{ gap: 2, width: 216, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "6px 8px", boxShadow: "var(--shadow-lg)" }}>
               {EMOJIS.map((e) => (
-                <span
+                <button
                   key={e}
-                  style={{ fontSize: 18, cursor: "pointer", padding: "2px 4px", lineHeight: 1.2 }}
-                  onClick={() => { onReact!(m.wa_message_id, e); setOpen(false); }}
+                  style={{ fontSize: 18, border: 0, background: "transparent", padding: "2px 4px", lineHeight: 1.2, borderRadius: "var(--radius-sm)" }}
+                  aria-label={"Reagir com " + e}
+                  onClick={() => {
+                    onReact!(m.wa_message_id, e);
+                    setOpen(false);
+                  }}
                 >
                   {e}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -89,9 +96,9 @@ function Quote({ text }: { text: string }) {
   return (
     <div
       style={{
-        borderLeft: "3px solid var(--wa)", background: "rgba(127,127,127,.12)", borderRadius: 6,
-        padding: "4px 8px", fontSize: 11.5, marginBottom: 5, opacity: 0.85, lineHeight: 1.4,
-        maxHeight: 52, overflow: "hidden", whiteSpace: "pre-wrap",
+        borderLeft: "3px solid var(--brand)", background: "var(--bg-sunken)", borderRadius: "var(--radius-sm)",
+        padding: "4px 8px", fontSize: 13, lineHeight: "18px", marginBottom: 5, color: "var(--text-secondary)",
+        maxHeight: 54, overflow: "hidden", whiteSpace: "pre-wrap",
       }}
     >
       {text}
@@ -99,13 +106,18 @@ function Quote({ text }: { text: string }) {
   );
 }
 
-// AuthorTag: nome do atendente que enviou (só no painel; cidadão não vê).
-function AuthorTag({ m }: { m: ApiMessage }) {
+// Author: nome do atendente que enviou (só no painel; cidadão não vê).
+function Author({ m }: { m: ApiMessage }) {
   if (m.direction !== "out" || !m.autor) return null;
+  return <div className="zg-msg-author">{m.autor}</div>;
+}
+
+function Meta({ m }: { m: ApiMessage }) {
   return (
-    <div className="wa-row out" style={{ marginBottom: 1 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa)", paddingRight: 2 }}>{m.autor}</span>
-    </div>
+    <span className="zg-msg-meta">
+      {hhmm(m.created_at)}
+      {m.direction === "out" && <Ticks status={m.status} />}
+    </span>
   );
 }
 
@@ -125,96 +137,58 @@ export function mesmoDia(a: string, b: string): boolean {
   return new Date(a).toDateString() === new Date(b).toDateString();
 }
 
-// DateDivider: pílula central de data entre blocos de mensagens (estilo WhatsApp).
+// DateDivider: pílula central de data entre blocos de mensagens.
 export function DateDivider({ iso }: { iso: string }) {
-  return (
-    <div className="wa-row" style={{ justifyContent: "center", margin: "6px 0" }}>
-      <span
-        style={{
-          fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", background: "var(--bg-sunken)",
-          border: "1px solid var(--border-subtle)", borderRadius: 99, padding: "3px 12px", textTransform: "uppercase",
-          letterSpacing: 0.3,
-        }}
-      >
-        {dateLabel(iso)}
-      </span>
-    </div>
-  );
+  return <span className="zg-day">{dateLabel(iso)}</span>;
 }
 
-// Renderiza uma mensagem: evento de sistema, nota interna, texto (WaBubble) ou mídia.
+// Ícone do evento de sistema conforme o texto (assumiu / transferiu / bot / encerrou).
+function eventoIcon(body: string): string {
+  const b = body.toLowerCase();
+  if (b.includes("transfer")) return "transfer";
+  if (b.includes("assumiu") || b.includes("atribu")) return "userCheck";
+  if (b.includes("encerr") || b.includes("finaliz") || b.includes("resolv")) return "archive";
+  if (b.includes("bot") || b.includes("encaminh")) return "bot";
+  return "info";
+}
+
+// Renderiza uma mensagem: evento de sistema, nota interna, texto ou mídia.
 export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: (waId: string, emoji: string) => void; onReply?: (m: ApiMessage) => void }) {
   if (m.direction === "evento") {
-    // Evento de sistema (resolver/assumir/transferir) — visual de nota interna,
-    // centralizado, visível só para a equipe (nunca vai pro cidadão).
+    // Registro do atendimento (resolver/assumir/transferir): só a equipe vê.
     return (
-      <div className="wa-row" style={{ justifyContent: "center" }}>
-        <div
-          style={{
-            maxWidth: 360, background: "var(--brand-soft)", border: "1px solid var(--border-subtle)",
-            borderRadius: 10, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.5, textAlign: "center",
-          }}
-          title="Registro do atendimento · visível só para a equipe"
-        >
-          <div className="row center" style={{ gap: 6, marginBottom: 2, color: "var(--brand-text)", fontWeight: 700, fontSize: 11, justifyContent: "center" }}>
-            <Icon name="info" size={12} /> Registro do atendimento
-          </div>
-          <div style={{ color: "var(--text-primary)" }}>{m.body}</div>
-          <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>{hhmm(m.created_at)}</div>
-        </div>
-      </div>
+      <span className="zg-sys" title={"Registro do atendimento · " + hhmm(m.created_at) + " · visível só para a equipe"}>
+        <Icon name={eventoIcon(m.body)} size={14} />
+        {m.body}
+      </span>
     );
   }
   if (m.direction === "note") {
     return (
-      <div className="wa-row" style={{ justifyContent: "center" }}>
-        <div
-          style={{
-            maxWidth: 340, background: "var(--st-pending-soft)", border: "1px solid var(--st-pending)",
-            borderRadius: 10, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
-          }}
-        >
-          <div className="row center" style={{ gap: 6, marginBottom: 3, color: "var(--st-pending)", fontWeight: 700, fontSize: 11 }}>
-            <Icon name="edit" size={12} /> Nota interna{m.autor ? " · " + m.autor : ""}
+      <div className="zg-msg zg-msg--note">
+        <div className="zg-bubble" style={{ whiteSpace: "pre-wrap" }}>
+          <div className="zg-msg-author">
+            <Icon name="note" size={14} />
+            Nota interna{m.autor ? " · " + m.autor : ""} · só a equipe vê
           </div>
-          <div style={{ color: "var(--text-primary)" }}>{m.body}</div>
-          <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3, textAlign: "right" }}>{hhmm(m.created_at)}</div>
+          {m.body}
+          <span className="zg-msg-meta">{hhmm(m.created_at)}</span>
         </div>
       </div>
     );
   }
-  if (!m.media_type) {
-    return (
-      <ReactionWrap m={m} onReact={onReact} onReply={onReply}>
-        <AuthorTag m={m} />
-        {m.reply_preview ? (
-          // Bolha custom com a citação (WaBubble não suporta children).
-          <div className={"wa-row " + (m.direction === "out" ? "out" : "in")}>
-            <div className={"wa-bubble " + (m.direction === "out" ? "out" : "in")}>
-              <Quote text={m.reply_preview} />
-              <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
-              <div className="wa-meta">
-                {hhmm(m.created_at)}
-                {m.direction === "out" && <Icon name="checkDouble" size={14} style={{ color: m.status === "read" ? "var(--st-read)" : "inherit" }} />}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <WaBubble
-            text={m.body}
-            dir={m.direction === "out" ? "out" : "in"}
-            time={hhmm(m.created_at)}
-            status={m.direction === "out" ? mapStatus(m.status) : undefined}
-          />
-        )}
-        <FailNote m={m} />
-      </ReactionWrap>
-    );
-  }
   return (
     <ReactionWrap m={m} onReact={onReact} onReply={onReply}>
-      <AuthorTag m={m} />
-      <MediaBubble m={m} />
+      {m.media_type ? (
+        <MediaBubble m={m} />
+      ) : (
+        <div className="zg-bubble" style={{ whiteSpace: "pre-wrap" }}>
+          <Author m={m} />
+          {m.reply_preview && <Quote text={m.reply_preview} />}
+          {m.body}
+          <Meta m={m} />
+        </div>
+      )}
       <FailNote m={m} />
     </ReactionWrap>
   );
@@ -224,11 +198,9 @@ export function MessageItem({ m, onReact, onReply }: { m: ApiMessage; onReact?: 
 function FailNote({ m }: { m: ApiMessage }) {
   if (m.status !== "failed" || m.direction !== "out") return null;
   return (
-    <div className="wa-row out" style={{ marginTop: 2 }}>
-      <span className="row center" style={{ gap: 5, fontSize: 11, color: "var(--st-failed)", fontWeight: 600 }}>
-        <Icon name="alertCircle" size={12} />
-        {m.error || "Falha no envio"}
-      </span>
+    <div className="zg-msg-fail">
+      <Icon name="alertCircle" size={14} />
+      {m.error || "Não foi possível entregar. Tente reenviar."}
     </div>
   );
 }
@@ -304,17 +276,17 @@ function MediaBubble({ m }: { m: ApiMessage }) {
   const labelTipo: Record<string, string> = { image: "Imagem", audio: "Áudio", video: "Vídeo", document: "Documento", sticker: "Figurinha" };
 
   return (
-    <div className={"wa-row " + m.direction}>
-      <div className={"wa-bubble " + m.direction} style={{ maxWidth: 260 }}>
+    <div className="zg-bubble" style={{ maxWidth: 280 }}>
+        <Author m={m} />
         {m.reply_preview && <Quote text={m.reply_preview} />}
         {/* Sem media_id (outbound por link) ou erro → chip */}
         {!m.media_id || erro ? (
           <div className="row center" style={{ gap: 8 }}>
             <Icon name={m.media_type === "document" ? "fileText" : "file"} size={16} />
-            <span style={{ fontSize: 12.5 }}>{m.media_name || labelTipo[m.media_type] || "Mídia"}</span>
+            <span style={{ fontSize: 13 }}>{m.media_name || labelTipo[m.media_type] || "Mídia"}</span>
           </div>
         ) : !url ? (
-          <div className="muted" style={{ fontSize: 12, padding: "6px 0" }}>Carregando {labelTipo[m.media_type]?.toLowerCase()}…</div>
+          <div className="zg-media" style={{ width: 240, height: 120, fontSize: 13 }}>Carregando {labelTipo[m.media_type]?.toLowerCase()}…</div>
         ) : isImg ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -334,16 +306,12 @@ function MediaBubble({ m }: { m: ApiMessage }) {
         ) : (
           <a href={url} download={m.media_name || "arquivo"} className="row center" style={{ gap: 8, color: "inherit" }}>
             <Icon name="fileText" size={16} />
-            <span style={{ fontSize: 12.5 }}>{m.media_name || "Documento"}</span>
+            <span style={{ fontSize: 13 }}>{m.media_name || "Documento"}</span>
             <Icon name="download" size={14} />
           </a>
         )}
-        {m.body && <div style={{ marginTop: 6, fontSize: 13 }}>{m.body}</div>}
-        <div className="wa-meta">
-          {hhmm(m.created_at)}
-          {m.direction === "out" && <Icon name="checkDouble" size={14} />}
-        </div>
-      </div>
+        {m.body && <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{m.body}</div>}
+        <Meta m={m} />
     </div>
   );
 }

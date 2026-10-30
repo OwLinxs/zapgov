@@ -253,9 +253,9 @@ export default function DisparoPage() {
                       >
                         <div className="row center" style={{ gap: 9 }}>
                           <Icon name={ic as never} size={17} style={{ color: modo === m ? "var(--brand-text)" : "var(--text-tertiary)" }} />
-                          <span className="strong" style={{ fontSize: 13.5 }}>{titulo}</span>
+                          <span className="strong" style={{ fontSize: 14 }}>{titulo}</span>
                         </div>
-                        <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>{sub}</div>
+                        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{sub}</div>
                       </button>
                     ))}
                   </div>
@@ -300,12 +300,12 @@ export default function DisparoPage() {
                             </span>
                             <div className="col grow" style={{ gap: 2 }}>
                               <div className="row center" style={{ gap: 8 }}>
-                                <span className="strong" style={{ fontSize: 13.5 }}>
+                                <span className="strong" style={{ fontSize: 14 }}>
                                   {t.name}
                                 </span>
                                 <span className="badge badge-neutral">{t.category}</span>
                               </div>
-                              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+                              <div className="mono" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
                                 {t.language + " · " + t.variables + " variáveis"}
                               </div>
                             </div>
@@ -317,7 +317,7 @@ export default function DisparoPage() {
                   </div>
                 </div>
                 {tpl && tpl.variables > 0 && modo === "personalizado" && (
-                  <div className="card card-pad" style={{ background: "var(--brand-soft)", fontSize: 12.5, color: "var(--text-secondary)" }}>
+                  <div className="card card-pad" style={{ background: "var(--brand-soft)", fontSize: 13, color: "var(--text-secondary)" }}>
                     <Icon name="info" size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
                     No modo personalizado, as variáveis são preenchidas <b>por contato</b> no próximo passo
                     (ou via importação de CSV).
@@ -385,7 +385,7 @@ export default function DisparoPage() {
                   ) : (
                     <EmptyState icon="template" title="Selecione um template" />
                   )}
-                  <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 12, display: "flex", gap: 6 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 12, display: "flex", gap: 6 }}>
                     <Icon name="info" size={13} /> Variáveis destacadas serão substituídas por dados de cada contato no envio.
                   </div>
                 </div>
@@ -456,7 +456,7 @@ export default function DisparoPage() {
                             </td>
                             <td className="strong">
                               <div className="row center" style={{ gap: 9 }}>
-                                <Avatar name={c.nome} size={28} />
+                                <Avatar name={c.nome} size={28} citizen />
                                 <div className="col" style={{ gap: 0 }}>
                                   <span>{c.nome}</span>
                                   <span className="mono faint" style={{ fontSize: 11 }}>
@@ -479,7 +479,7 @@ export default function DisparoPage() {
                                 ))}
                               </div>
                             </td>
-                            <td className="mono" style={{ fontSize: 11.5 }}>
+                            <td className="mono" style={{ fontSize: 12 }}>
                               {c.cpf}
                             </td>
                           </tr>
@@ -494,7 +494,7 @@ export default function DisparoPage() {
                     <span className="mono" style={{ fontSize: 40, fontWeight: 700, color: "var(--brand-text)" }}>
                       {sel.size}
                     </span>
-                    <span className="muted" style={{ fontSize: 12.5 }}>
+                    <span className="muted" style={{ fontSize: 13 }}>
                       destinatários selecionados
                     </span>
                   </div>
@@ -511,12 +511,12 @@ export default function DisparoPage() {
                     <div className="divider" />
                     <div className="row between center">
                       <span className="strong">Custo estimado</span>
-                      <span className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--wa)" }}>
+                      <span className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--wa-deep)" }}>
                         {brl(custoTotal)}
                       </span>
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-faint)", display: "flex", gap: 6, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", display: "flex", gap: 6, lineHeight: 1.5 }}>
                     <Icon name="info" size={13} style={{ flex: "none", marginTop: 1 }} /> Estimativa por conversa de utilidade (Meta). Valor final pode variar conforme categoria.
                   </div>
                 </div>
@@ -548,7 +548,7 @@ export default function DisparoPage() {
                                   <div className="row center" style={{ gap: 4 }}>
                                     <input
                                       className="input"
-                                      style={{ height: 28, fontSize: 11.5, minWidth: 100 }}
+                                      style={{ height: 28, fontSize: 12, minWidth: 100 }}
                                       placeholder="valor p/ todos…"
                                       value={colFill[n] || ""}
                                       onChange={(e) => setColFill((cf) => ({ ...cf, [n]: e.target.value }))}
@@ -574,8 +574,8 @@ export default function DisparoPage() {
                           <tr key={c.id}>
                             <td className="strong" style={{ whiteSpace: "nowrap" }}>
                               <div className="col" style={{ gap: 0 }}>
-                                <span style={{ fontSize: 12.5 }}>{c.nome}</span>
-                                <span className="mono faint" style={{ fontSize: 10.5 }}>{c.telefone}</span>
+                                <span style={{ fontSize: 13 }}>{c.nome}</span>
+                                <span className="mono faint" style={{ fontSize: 11 }}>{c.telefone}</span>
                               </div>
                             </td>
                             {Array.from({ length: nVars }).map((_, i) => {
@@ -585,7 +585,7 @@ export default function DisparoPage() {
                                 <td key={n}>
                                   <input
                                     className="input"
-                                    style={{ height: 32, fontSize: 12.5, minWidth: 120, borderColor: v.trim() ? undefined : "var(--st-pending)" }}
+                                    style={{ height: 32, fontSize: 13, minWidth: 120, borderColor: v.trim() ? undefined : "var(--st-pending)" }}
                                     value={v}
                                     placeholder={n === "1" ? "Nome" : "Valor"}
                                     onChange={(e) => setVarDe(c.id, n, e.target.value)}
@@ -634,11 +634,11 @@ export default function DisparoPage() {
                         >
                           <div className="row center" style={{ gap: 9 }}>
                             <Icon name={opt === "agora" ? "zap" : "calendar"} size={17} style={{ color: quando === opt ? "var(--brand-text)" : "var(--text-tertiary)" }} />
-                            <span className="strong" style={{ fontSize: 13.5 }}>
+                            <span className="strong" style={{ fontSize: 14 }}>
                               {opt === "agora" ? "Enviar agora" : "Agendar"}
                             </span>
                           </div>
-                          <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                             {opt === "agora" ? "Inicia imediatamente" : "Escolha data e hora"}
                           </div>
                         </button>
@@ -717,7 +717,7 @@ export default function DisparoPage() {
           {step === 3 && (
             <span className="muted" style={{ fontSize: 13 }}>
               <span className="strong">{sel.size}</span> destinatários ·{" "}
-              <span className="strong" style={{ color: "var(--wa)" }}>
+              <span className="strong" style={{ color: "var(--wa-deep)" }}>
                 {brl(custoTotal)}
               </span>
             </span>

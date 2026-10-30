@@ -19,11 +19,11 @@ interface ToastItem extends ToastInput {
 
 const ToastCtx = createContext<(t: ToastInput) => void>(() => {});
 
-const ICO: Record<ToastType, { i: IconName; c: string; b: string }> = {
-  success: { i: "checkCircle", c: "var(--st-read)", b: "var(--st-read-soft)" },
-  error: { i: "alertCircle", c: "var(--st-failed)", b: "var(--st-failed-soft)" },
-  info: { i: "info", c: "var(--brand-text)", b: "var(--brand-soft)" },
-  wa: { i: "message", c: "var(--wa)", b: "var(--wa-soft)" },
+const ICO: Record<ToastType, { i: IconName; c: string }> = {
+  success: { i: "checkCircle", c: "var(--st-read)" },
+  error: { i: "alertCircle", c: "var(--st-failed)" },
+  info: { i: "info", c: "var(--brand-text)" },
+  wa: { i: "message", c: "var(--wa-deep)" },
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -42,9 +42,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => {
           const ic = ICO[t.type || "info"];
           return (
-            <div key={t.id} className="toast">
-              <div className="toast-ico" style={{ background: ic.b, color: ic.c }}>
-                <Icon name={ic.i} size={14} />
+            <div key={t.id} className="toast" role={t.type === "error" ? "alert" : "status"}>
+              <div className="toast-ico" style={{ color: ic.c }}>
+                <Icon name={ic.i} size={20} />
               </div>
               <div className="grow">
                 <div className="toast-title">{t.title}</div>
@@ -52,6 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               </div>
               <button
                 className="btn btn-ghost btn-icon btn-sm"
+                aria-label="Fechar aviso"
                 onClick={() => setToasts((ts) => ts.filter((x) => x.id !== t.id))}
               >
                 <Icon name="x" size={14} />

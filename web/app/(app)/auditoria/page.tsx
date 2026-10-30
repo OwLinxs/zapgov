@@ -107,7 +107,7 @@ export default function AuditoriaPage() {
 
           <div className="card" style={{ overflow: "hidden" }}>
             {erro ? (
-              <EmptyState icon="alertCircle" title="API indisponível" sub={erro} action={<Button size="sm" onClick={load}>Tentar de novo</Button>} />
+              <EmptyState error title="Não foi possível carregar os dados" sub={erro} action={<Button size="sm" onClick={load}>Tentar novamente</Button>} />
             ) : loading ? (
               <div className="card-pad col" style={{ gap: 10 }}>
                 {[0, 1, 2, 3].map((i) => (
@@ -135,7 +135,7 @@ export default function AuditoriaPage() {
                       const convId = convIdDaRota(a.rota);
                       return (
                         <tr key={a.id}>
-                          <td className="mono" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                          <td className="mono" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                             {new Date(a.criado_em).toLocaleString("pt-BR")}
                           </td>
                           <td className="strong">
@@ -145,12 +145,12 @@ export default function AuditoriaPage() {
                             </div>
                           </td>
                           <td>
-                            <span className="muted" style={{ fontSize: 12.5 }}>
+                            <span className="muted" style={{ fontSize: 13 }}>
                               {PAPEL_LABEL[a.papel] || a.papel || "—"}
                             </span>
                           </td>
                           <td>{acaoLabel(a.metodo, a.rota)}</td>
-                          <td className="mono faint" style={{ fontSize: 11.5 }}>{a.ip || "—"}</td>
+                          <td className="mono faint" style={{ fontSize: 12 }}>{a.ip || "—"}</td>
                           <td className="num">
                             <span className={"badge " + (a.status < 300 ? "badge-read" : "badge-failed")}>{a.status}</span>
                           </td>

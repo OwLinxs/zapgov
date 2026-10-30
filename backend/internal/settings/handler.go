@@ -1,22 +1,36 @@
 package settings
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"errors"
+	"strings"
 
-// MetaInfo são os dados (mascarados) da conexão com a Meta, vindos do ambiente.
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
+	"zapgov/backend/internal/auth"
+	"zapgov/backend/internal/tenantctx"
+	"zapgov/backend/internal/tenants"
+)
+
+// MetaInfo expõe apenas metadados e indicadores de presença dos segredos Meta.
 type MetaInfo struct {
-	PhoneNumberID string `json:"phone_number_id"`
-	WABAID        string `json:"waba_id"`
-	APIVersion    string `json:"api_version"`
-	Connected     bool   `json:"connected"`
+	PhoneNumberID         string `json:"phone_number_id"`
+	WABAID                string `json:"waba_id"`
+	APIVersion            string `json:"api_version"`
+	Connected             bool   `json:"connected"`
+	TokenConfigured       bool   `json:"token_configured"`
+	AppSecretConfigured   bool   `json:"app_secret_configured"`
+	VerifyTokenConfigured bool   `json:"webhook_verify_token_configured"`
+	Source                string `json:"source"`
 }
 
 type Handler struct {
-	repo *Repository
-	meta MetaInfo
+	repo     *Repository
+	meta     MetaInfo
+	metaRepo *tenants.Repository
 }
 
-func NewHandler(repo *Repository, meta MetaInfo) *Handler {
-	return &Handler{repo: repo, meta: meta}
+func NewHandler(repo *Repository, meta MetaInfo, metaRepo *tenants.Repository) *Handler {
+	return &Handler{repo: repo, meta: meta, metaRepo: metaRepo}
 }
 
 // Register: leitura aberta a qualquer logado; escrita é admin.
@@ -40,6 +54,7 @@ func (h *Handler) Register(r fiber.Router, admin fiber.Handler) {
 	r.Get("/settings/pesquisa", h.getPesquisa)
 	r.Put("/settings/pesquisa", admin, h.putPesquisa)
 	r.Get("/settings/meta", h.getMeta)
+	r.Put("/settings/meta", auth.RequireRole("admin"), h.putMeta)
 	r.Get("/settings/billing", h.getBilling)
 	r.Get("/settings/apikey", admin, h.getApiKey)
 	r.Post("/settings/apikey/regen", admin, h.regenApiKey)
@@ -230,12 +245,68 @@ func (h *Handler) putPesquisa(c *fiber.Ctx) error {
 }
 
 func (h *Handler) getMeta(c *fiber.Ctx) error {
+	visible := func(s string) string {
+		if c.Locals("papel") == "admin" {
+			return s
+		}
+		return mask(s)
+	}
+	m, err := h.metaRepo.Creds(c.Context(), tenantctx.From(c.Context()))
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "não foi possível consultar as credenciais Meta"})
+	}
+	if m.PhoneNumberID != "" || m.Token != "" {
+		return c.JSON(MetaInfo{
+			PhoneNumberID: visible(m.PhoneNumberID), WABAID: visible(m.WABAID), APIVersion: m.APIVersion,
+			Connected:       m.PhoneNumberID != "" && m.Token != "",
+			TokenConfigured: m.Token != "", AppSecretConfigured: m.AppSecret != "",
+			VerifyTokenConfigured: m.WebhookVerifyToken != "", Source: "painel",
+		})
+	}
+	if tenantctx.From(c.Context()) != 1 {
+		return c.JSON(MetaInfo{APIVersion: "v21.0"})
+	}
 	return c.JSON(MetaInfo{
-		PhoneNumberID: mask(h.meta.PhoneNumberID),
-		WABAID:        mask(h.meta.WABAID),
-		APIVersion:    h.meta.APIVersion,
-		Connected:     h.meta.PhoneNumberID != "" && h.meta.Connected,
+		PhoneNumberID:   visible(h.meta.PhoneNumberID),
+		WABAID:          visible(h.meta.WABAID),
+		APIVersion:      h.meta.APIVersion,
+		Connected:       h.meta.PhoneNumberID != "" && h.meta.Connected,
+		TokenConfigured: h.meta.Connected, Source: "ambiente",
 	})
+}
+
+func (h *Handler) putMeta(c *fiber.Ctx) error {
+	var m tenants.MetaCreds
+	if err := c.BodyParser(&m); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "JSON inválido"})
+	}
+	tid := tenantctx.From(c.Context())
+	current, err := h.metaRepo.Creds(c.Context(), tid)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "não foi possível consultar as credenciais Meta"})
+	}
+	m.PhoneNumberID = strings.TrimSpace(m.PhoneNumberID)
+	m.WABAID = strings.TrimSpace(m.WABAID)
+	m.APIVersion = strings.TrimSpace(m.APIVersion)
+	if m.Token == "" {
+		m.Token = current.Token
+	}
+	if m.AppSecret == "" {
+		m.AppSecret = current.AppSecret
+	}
+	if m.WebhookVerifyToken == "" {
+		m.WebhookVerifyToken = current.WebhookVerifyToken
+	}
+	if m.APIVersion == "" {
+		m.APIVersion = current.APIVersion
+	}
+	if m.PhoneNumberID == "" || m.WABAID == "" || m.Token == "" || m.AppSecret == "" || m.WebhookVerifyToken == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "informe Phone Number ID, WABA ID, token, App Secret e Verify Token"})
+	}
+	if err := h.metaRepo.SetCreds(c.Context(), tid, m); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "não foi possível salvar as credenciais Meta"})
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 func (h *Handler) getBilling(c *fiber.Ctx) error {

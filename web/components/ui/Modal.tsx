@@ -29,7 +29,7 @@ export function Modal({
       className="overlay"
       onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
     >
-      <div className="modal" style={{ maxWidth: width }}>
+      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: width }}>
         {children}
       </div>
     </div>
@@ -65,7 +65,7 @@ export function ConfirmModal({
             color: danger ? "var(--st-failed)" : "var(--brand-text)",
           }}
         >
-          <Icon name={icon} size={21} />
+          <Icon name={icon} size={20} />
         </div>
         <div className="modal-title">{title}</div>
         {message && (
@@ -75,7 +75,7 @@ export function ConfirmModal({
         )}
       </div>
       <div className="modal-foot">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="secondary" onClick={onClose}>
           Cancelar
         </Button>
         <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>

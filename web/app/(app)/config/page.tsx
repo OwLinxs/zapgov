@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "@/components/shell/Topbar";
 import { Avatar, Button, Dropdown, Field, Icon, Input, Modal, Skel, useToast } from "@/components/ui";
 import { IconName } from "@/lib/icons";
+import { useAuth } from "@/lib/auth";
 import {
-  getOrg, saveOrg, getMeta, getBilling, getApiKey, regenApiKey,
+  getOrg, saveOrg, getMeta, saveMeta, getBilling, getApiKey, regenApiKey,
   getEncerramento, saveEncerramento,
   getAusencia, saveAusencia,
   getAssinatura, saveAssinatura,
@@ -18,7 +19,7 @@ import {
   listDepartments,
   getVisibilidade, setVisibilidade,
   listQuickReplies, createQuickReply, deleteQuickReply,
-  type SettingsOrg, type SettingsMeta, type SettingsBilling, type SettingsWebhook,
+  type SettingsOrg, type SettingsMeta, type TenantMeta, type SettingsBilling, type SettingsWebhook,
   type SettingsEncerramento, type SettingsAusencia, type SettingsRoteamento, type SettingsLembrete, type SettingsPesquisa,
   type ApiUser, type Papel, type ApiDepartment, type ApiQuickReply, type ApiReminder, type ApiTemplate,
 } from "@/lib/api";
@@ -39,7 +40,7 @@ const PAPEL_CLS: Record<Papel, string> = { admin: "badge-brand", supervisor: "ba
 function Head({ title, sub }: { title: string; sub?: string }) {
   return (
     <div style={{ marginBottom: 20 }}>
-      <h2 style={{ fontSize: 17, fontWeight: 700 }}>{title}</h2>
+      <h2 style={{ fontSize: 18, fontWeight: 700 }}>{title}</h2>
       {sub && <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{sub}</div>}
     </div>
   );
@@ -93,7 +94,7 @@ function OrgSection() {
       await saveOrg({ nome: org!.nome, uf: org!.uf, fuso: org!.fuso });
       toast({ type: "success", title: "Alterações salvas" });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -191,7 +192,7 @@ function FeriadosCalendar({ value, onChange, disabled }: { value: string[]; onCh
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
           {WD.map((w, i) => (
-            <div key={i} style={{ textAlign: "center", fontSize: 10.5, color: "var(--text-faint)", fontWeight: 600, padding: "2px 0" }}>{w}</div>
+            <div key={i} style={{ textAlign: "center", fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, padding: "2px 0" }}>{w}</div>
           ))}
           {cells.map((d, i) => {
             if (d === null) return <div key={i} />;
@@ -202,7 +203,7 @@ function FeriadosCalendar({ value, onChange, disabled }: { value: string[]; onCh
                 type="button"
                 onClick={() => toggle(d)}
                 style={{
-                  height: 30, borderRadius: 7, fontSize: 12.5, cursor: "pointer",
+                  height: 30, borderRadius: 7, fontSize: 13, cursor: "pointer",
                   border: isToday(d) ? "1px solid var(--brand)" : "1px solid transparent",
                   background: hol ? "var(--brand)" : "transparent",
                   color: hol ? "#fff" : "var(--text-primary)",
@@ -218,7 +219,7 @@ function FeriadosCalendar({ value, onChange, disabled }: { value: string[]; onCh
 
       <label className="row center" style={{ gap: 8, cursor: "pointer" }}>
         <input type="checkbox" checked={recorrente} onChange={(e) => setRecorrente(e.target.checked)} style={{ width: 15, height: 15, accentColor: "var(--brand)" }} />
-        <span style={{ fontSize: 12.5 }}>Repetir todo ano ao marcar uma data</span>
+        <span style={{ fontSize: 13 }}>Repetir todo ano ao marcar uma data</span>
       </label>
 
       {chips.length > 0 && (
@@ -228,7 +229,7 @@ function FeriadosCalendar({ value, onChange, disabled }: { value: string[]; onCh
             return (
               <span key={f} className="tag" style={{ gap: 6 }}>
                 <Icon name="calendar" size={12} />
-                {txt}{rec && <span className="faint" style={{ fontSize: 10 }}>todo ano</span>}
+                {txt}{rec && <span className="faint" style={{ fontSize: 11 }}>todo ano</span>}
                 <span style={{ cursor: "pointer", marginLeft: 2 }} onClick={() => onChange(value.filter((x) => x !== f))}>
                   <Icon name="x" size={12} />
                 </span>
@@ -265,7 +266,7 @@ function VisibilidadeSetores() {
       await setVisibilidade(limpos);
       setGrupos(limpos);
       toast({ type: "success", title: "Grupos salvos", message: "Os atendentes precisam recarregar o app para ver a mudança." });
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
 
@@ -280,7 +281,7 @@ function VisibilidadeSetores() {
         </div>
       </div>
 
-      {grupos.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>Nenhum grupo — cada setor fica isolado.</div>}
+      {grupos.length === 0 && <div className="muted" style={{ fontSize: 13 }}>Nenhum grupo — cada setor fica isolado.</div>}
 
       {grupos.map((grp, i) => {
         const paraAdd = setores.filter((s) => !grp.includes(s) && !emGrupo.has(s));
@@ -347,7 +348,7 @@ function AtendimentoSection() {
     try {
       await cancelReminder(id);
       setLemList((ls) => ls.filter((x) => x.id !== id));
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
 
   if (!enc || !aus) return <Skel h={320} />;
@@ -370,7 +371,7 @@ function AtendimentoSection() {
       ]);
       toast({ type: "success", title: "Alterações salvas" });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -392,7 +393,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Enviar mensagem de encerramento</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Enviar mensagem de encerramento</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Ao finalizar um atendimento, manda um aviso ao cidadão (só se a janela de 24h ainda estiver aberta).
             </div>
@@ -415,7 +416,7 @@ function AtendimentoSection() {
             <div
               style={{
                 background: "var(--bubble-out, #d9fdd3)", color: "#111",
-                padding: "9px 12px", borderRadius: 10, fontSize: 13.5,
+                padding: "9px 12px", borderRadius: 10, fontSize: 14,
                 lineHeight: 1.5, whiteSpace: "pre-wrap", maxWidth: 360,
                 boxShadow: "0 1px 1px rgba(0,0,0,.08)",
               }}
@@ -437,7 +438,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Chatbot ativo</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Chatbot ativo</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Desligado: a mensagem do cidadão vai <b>direto pra fila</b> (atendente assume), sem menu nem auto-resposta do bot.
             </div>
@@ -452,7 +453,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Separar conversas por departamento</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Separar conversas por departamento</div>
             <div className="muted" style={{ fontSize: 12 }}>
               O atendente vê só as conversas do próprio setor. Admin e supervisor veem todas.
               (Atendente sem setor definido continua vendo tudo.)
@@ -467,7 +468,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Etiquetar com o nome do atendente</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Etiquetar com o nome do atendente</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Ao assumir uma conversa, aplica automaticamente uma etiqueta com o nome de quem atendeu.
             </div>
@@ -495,7 +496,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Assinatura do atendente</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Assinatura do atendente</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Anexa o nome de quem respondeu ao fim de cada mensagem enviada manualmente.
             </div>
@@ -505,7 +506,7 @@ function AtendimentoSection() {
           <div
             style={{
               background: "var(--bubble-out, #d9fdd3)", color: "#111",
-              padding: "9px 12px", borderRadius: 10, fontSize: 13.5,
+              padding: "9px 12px", borderRadius: 10, fontSize: 14,
               lineHeight: 1.5, whiteSpace: "pre-wrap", maxWidth: 360,
               boxShadow: "0 1px 1px rgba(0,0,0,.08)",
             }}
@@ -525,7 +526,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Auto-resposta de ausência</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Auto-resposta de ausência</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Responde automaticamente quando o cidadão escreve em fim de semana ou feriado
               (no máximo uma vez a cada 8h). Fuso: {aus.fuso || "America/Sao_Paulo"}.
@@ -570,7 +571,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Horário comercial</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Horário comercial</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Fora do expediente (em dia útil), responde automaticamente. Fuso: {aus.fuso || "America/Sao_Paulo"}.
             </div>
@@ -632,7 +633,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Lembrete automático de consulta</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Lembrete automático de consulta</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Quando um template enviado tiver uma <b>data futura</b> (DD/MM/AAAA) numa variável,
               agenda um lembrete pro <b>dia anterior</b>, no horário abaixo. Fuso: {lem.fuso || "America/Sao_Paulo"}.
@@ -665,7 +666,7 @@ function AtendimentoSection() {
             <span className="field-label">Lembretes e pendências ({lemList.length})</span>
             <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--border-subtle)", borderRadius: 9 }}>
               {lemList.map((r) => (
-                <div key={r.id} className="row center between" style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)", fontSize: 12.5 }}>
+                <div key={r.id} className="row center between" style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-subtle)", fontSize: 13 }}>
                   <div className="col" style={{ gap: 0 }}>
                     <span className="strong">{r.nome || r.phone} · {r.status === "revisao" ? "Conferir envio antes de reenviar" : r.status}</span>
                     <span className="faint" style={{ fontSize: 11 }}>
@@ -692,7 +693,7 @@ function AtendimentoSection() {
             style={{ width: 17, height: 17, accentColor: "var(--brand)" }}
           />
           <div className="col" style={{ gap: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Pesquisa de satisfação</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Pesquisa de satisfação</div>
             <div className="muted" style={{ fontSize: 12 }}>
               Ao finalizar um atendimento, envia uma avaliação de 1 a 5 estrelas (lista interativa).
               A resposta não reabre a conversa. Métricas no Dashboard e em Relatórios.
@@ -736,32 +737,72 @@ function AtendimentoSection() {
 }
 
 function MetaSection() {
+  const { user } = useAuth();
+  const toast = useToast();
   const [meta, setMeta] = useState<SettingsMeta | null>(null);
-  useEffect(() => { getMeta().then(setMeta).catch(() => {}); }, []);
+  const [form, setForm] = useState<TenantMeta>({ phone_number_id: "", waba_id: "", token: "", app_secret: "", api_version: "v21.0", webhook_verify_token: "" });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    getMeta().then((m) => {
+      setMeta(m);
+      setForm((f) => ({ ...f, phone_number_id: m.phone_number_id, waba_id: m.waba_id, api_version: m.api_version || "v21.0" }));
+    }).catch((e) => toast({ type: "error", title: "Erro ao carregar Meta", message: (e as Error).message }));
+  }, [toast]);
+  async function salvar() {
+    setSaving(true);
+    try {
+      await saveMeta(form);
+      const updated = await getMeta();
+      setMeta(updated);
+      setForm((f) => ({ ...f, token: "", app_secret: "", webhook_verify_token: "" }));
+      toast({ type: "success", title: "Credenciais Meta salvas" });
+    } catch (e) {
+      toast({ type: "error", title: "Não foi possível salvar", message: (e as Error).message });
+    } finally { setSaving(false); }
+  }
   if (!meta) return <Skel h={160} />;
   return (
     <div className="fade-in">
-      <Head title="WhatsApp / Meta" sub="Status da conexão com a Meta Cloud API." />
+      <Head title="WhatsApp / Meta" sub="Credenciais da Meta Cloud API deste órgão." />
       <div className="card card-pad" style={{ marginBottom: 14 }}>
         <div className="row between center">
           <div className="row center" style={{ gap: 13 }}>
-            <span className="kpi-ico" style={{ background: "var(--wa-soft)", color: "var(--wa)", width: 44, height: 44 }}>
+            <span className="kpi-ico" style={{ background: "var(--wa-soft)", color: "var(--wa-deep)", width: 44, height: 44 }}>
               <Icon name="phone" size={20} />
             </span>
             <div className="col" style={{ gap: 2 }}>
-              <div className="strong" style={{ fontSize: 14.5 }}>Phone ID: <span className="mono">{meta.phone_number_id || "—"}</span></div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>WABA: {meta.waba_id || "—"} · {meta.api_version}</div>
+              <div className="strong" style={{ fontSize: 15 }}>Phone ID: <span className="mono">{meta.phone_number_id || "—"}</span></div>
+              <div className="mono" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>WABA: {meta.waba_id || "—"} · {meta.api_version}</div>
             </div>
           </div>
           <span className={"badge " + (meta.connected ? "badge-read" : "badge-failed")}>
-            <span className="dot" /> {meta.connected ? "Conectado" : "Sem token"}
+            <span className="dot" /> {meta.connected ? "Configurado" : "Não configurado"}
           </span>
         </div>
       </div>
-      <div className="card card-pad" style={{ fontSize: 12.5, color: "var(--text-tertiary)", display: "flex", gap: 8 }}>
-        <Icon name="info" size={15} style={{ flex: "none", marginTop: 1 }} />
-        Credenciais (token, App Secret) vivem no ambiente do servidor (`.env`). Edição por painel entra com o multi-tenant.
-      </div>
+      {user?.papel === "admin" && <div className="card card-pad col" style={{ gap: 14 }}>
+        <div className="strong">Editar credenciais</div>
+        {meta.source === "ambiente" && <div className="muted" style={{ fontSize: 12 }}>As credenciais atuais vêm do ambiente. Ao salvar, o painel passa a usar os valores abaixo.</div>}
+        <div className="row" style={{ gap: 12 }}>
+          <Field label="Phone Number ID"><Input value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: e.target.value.trim() })} /></Field>
+          <Field label="WABA ID"><Input value={form.waba_id} onChange={(e) => setForm({ ...form, waba_id: e.target.value.trim() })} /></Field>
+        </div>
+        <Field label="Token de acesso" hint={meta.token_configured && meta.source === "painel" ? "Já cadastrado. Deixe em branco para manter." : "Token permanente do System User da Meta."}>
+          <Input type="password" autoComplete="new-password" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value.trim() })} />
+        </Field>
+        <div className="row" style={{ gap: 12 }}>
+          <Field label="App Secret" hint={meta.app_secret_configured ? "Já cadastrado. Deixe em branco para manter." : "Necessário para validar webhooks."}>
+            <Input type="password" autoComplete="new-password" value={form.app_secret} onChange={(e) => setForm({ ...form, app_secret: e.target.value.trim() })} />
+          </Field>
+          <Field label="Versão da API"><Input value={form.api_version} onChange={(e) => setForm({ ...form, api_version: e.target.value.trim() })} /></Field>
+        </div>
+        <Field label="Webhook Verify Token" hint={meta.webhook_verify_token_configured ? "Já cadastrado. Deixe em branco para manter." : "Defina este mesmo valor na configuração do webhook da Meta."}>
+          <Input type="password" autoComplete="new-password" value={form.webhook_verify_token} onChange={(e) => setForm({ ...form, webhook_verify_token: e.target.value.trim() })} />
+        </Field>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <Button variant="primary" disabled={saving || !form.phone_number_id || !form.waba_id} onClick={salvar}>{saving ? "Salvando…" : "Salvar credenciais"}</Button>
+        </div>
+      </div>}
     </div>
   );
 }
@@ -776,7 +817,7 @@ function RespostasSection() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setList(await listQuickReplies()); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    try { setList(await listQuickReplies()); } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setLoading(false); }
   }, [toast]);
   useEffect(() => { load(); }, [load]);
@@ -788,11 +829,11 @@ function RespostasSection() {
       await createQuickReply(atalho.trim(), texto.trim());
       setAtalho(""); setTexto("");
       load();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
   async function remover(id: number) {
-    try { await deleteQuickReply(id); load(); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    try { await deleteQuickReply(id); load(); } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
 
   return (
@@ -823,8 +864,8 @@ function RespostasSection() {
             <tbody>
               {list.map((q) => (
                 <tr key={q.id}>
-                  <td className="mono" style={{ fontSize: 12.5 }}>{q.atalho || "—"}</td>
-                  <td style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>{q.texto}</td>
+                  <td className="mono" style={{ fontSize: 13 }}>{q.atalho || "—"}</td>
+                  <td style={{ fontSize: 13, color: "var(--text-secondary)" }}>{q.texto}</td>
                   <td>
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={() => remover(q.id)} title="Remover">
                       <Icon name="trash" size={14} />
@@ -855,16 +896,16 @@ function UsuariosSection() {
       const [us, ds] = await Promise.all([listUsers(), listDepartments().catch(() => [])]);
       setList(us);
       setDeps(ds);
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setLoading(false); }
   }, [toast]);
   useEffect(() => { load(); }, [load]);
 
   async function mudarPapel(u: ApiUser, papel: Papel) {
-    try { await updateUser(u.id, { nome: u.nome, email: u.email, papel, setor: u.setor, ativo: u.ativo }); load(); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    try { await updateUser(u.id, { nome: u.nome, email: u.email, papel, setor: u.setor, ativo: u.ativo }); load(); } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
   async function toggleAtivo(u: ApiUser) {
-    try { await updateUser(u.id, { nome: u.nome, email: u.email, papel: u.papel, setor: u.setor, ativo: !u.ativo }); load(); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    try { await updateUser(u.id, { nome: u.nome, email: u.email, papel: u.papel, setor: u.setor, ativo: !u.ativo }); load(); } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
   async function resetarSenha(u: ApiUser) {
     // Gera uma senha provisória legível (8 caracteres).
@@ -874,7 +915,7 @@ function UsuariosSection() {
       await resetUserPassword(u.id, senha);
       setResetada({ nome: u.nome, senha });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -905,7 +946,7 @@ function UsuariosSection() {
                     </div>
                   </td>
                   <td><span className={"badge " + PAPEL_CLS[u.papel]}>{PAPEL_LABEL[u.papel]}</span></td>
-                  <td><span className="faint" style={{ fontSize: 12.5 }}>{u.setor || "Todos"}</span></td>
+                  <td><span className="faint" style={{ fontSize: 13 }}>{u.setor || "Todos"}</span></td>
                   <td><span className={"badge " + (u.ativo ? "badge-read" : "badge-neutral")}><span className="dot" /> {u.ativo ? "Ativo" : "Inativo"}</span></td>
                   <td>
                     <Dropdown trigger={<button className="btn btn-ghost btn-icon btn-sm"><Icon name="more" size={15} /></button>}>
@@ -943,7 +984,7 @@ function UsuariosSection() {
           <div className="modal-sub">{resetada?.nome} — troca obrigatória no próximo login.</div>
         </div>
         <div className="modal-body col" style={{ gap: 12 }}>
-          <div className="muted" style={{ fontSize: 12.5 }}>Repasse esta senha provisória ao usuário:</div>
+          <div className="muted" style={{ fontSize: 13 }}>Repasse esta senha provisória ao usuário:</div>
           <div className="row center between" style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg-sunken)", border: "1px solid var(--border)" }}>
             <span className="mono" style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>{resetada?.senha}</span>
             <Button
@@ -985,7 +1026,7 @@ function EditarUsuarioModal({ user, deps, onClose, onSaved }: { user: ApiUser | 
       onSaved();
       onClose();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally { setSaving(false); }
   }
 
@@ -1043,7 +1084,7 @@ function NovoUsuarioModal({ open, deps, onClose, onCreated }: { open: boolean; d
       onCreated();
       onClose();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally { setSaving(false); }
   }
 
@@ -1089,21 +1130,21 @@ function WebhooksSection() {
       const [k, w] = await Promise.all([getApiKey(), listWebhooks()]);
       setApiKey(k.api_key);
       setHooks(w);
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }, [toast]);
   useEffect(() => { load(); }, [load]);
 
   async function regen() {
     try { const r = await regenApiKey(); setApiKey(r.api_key); toast({ type: "success", title: "Nova chave gerada" }); }
-    catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
   async function add() {
     if (!novaUrl.trim()) return;
     try { await createWebhook(novaUrl, ["messages", "message_status"]); setNovaUrl(""); load(); }
-    catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
   async function remove(id: number) {
-    try { await deleteWebhook(id); load(); } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    try { await deleteWebhook(id); load(); } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
 
   return (
@@ -1127,12 +1168,12 @@ function WebhooksSection() {
           <Button variant="secondary" icon="plus" onClick={add}>Adicionar</Button>
         </div>
         {hooks.length === 0 ? (
-          <div className="muted" style={{ padding: "0 18px 16px", fontSize: 12.5 }}>Nenhum endpoint cadastrado.</div>
+          <div className="muted" style={{ padding: "0 18px 16px", fontSize: 13 }}>Nenhum endpoint cadastrado.</div>
         ) : hooks.map((w, i) => (
           <div key={w.id} className="row between center" style={{ padding: "13px 18px", borderTop: "1px solid var(--border-subtle)" }}>
             <div className="col" style={{ gap: 4, minWidth: 0 }}>
-              <div className="mono" style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.url}</div>
-              <div className="row" style={{ gap: 5 }}>{w.eventos.map((e) => <span key={e} className="badge badge-neutral mono" style={{ fontSize: 10.5 }}>{e}</span>)}</div>
+              <div className="mono" style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.url}</div>
+              <div className="row" style={{ gap: 5 }}>{w.eventos.map((e) => <span key={e} className="badge badge-neutral mono" style={{ fontSize: 11 }}>{e}</span>)}</div>
             </div>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => remove(w.id)}><Icon name="trash" size={15} /></button>
           </div>
@@ -1156,13 +1197,13 @@ function FaturamentoSection() {
             <span className="strong" style={{ fontSize: 16 }}>Plano {b.plano}</span>
             <span className="badge badge-brand">Ativo</span>
           </div>
-          <div className="muted" style={{ fontSize: 12.5 }}>até {b.limite_mensal.toLocaleString("pt-BR")} mensagens/mês</div>
+          <div className="muted" style={{ fontSize: 13 }}>até {b.limite_mensal.toLocaleString("pt-BR")} mensagens/mês</div>
         </div>
       </div>
       <div className="card card-pad col" style={{ gap: 12 }}>
         <div className="row between center">
           <span className="strong">Consumo do mês</span>
-          <span className="mono muted" style={{ fontSize: 12.5 }}>{b.enviadas.toLocaleString("pt-BR")} / {b.limite_mensal.toLocaleString("pt-BR")}</span>
+          <span className="mono muted" style={{ fontSize: 13 }}>{b.enviadas.toLocaleString("pt-BR")} / {b.limite_mensal.toLocaleString("pt-BR")}</span>
         </div>
         <div className="progress" style={{ height: 8 }}>
           <div className="progress-bar" style={{ width: pct + "%", background: pct > 85 ? "var(--st-failed)" : "var(--brand)" }} />

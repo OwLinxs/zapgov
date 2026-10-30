@@ -1,5 +1,8 @@
 # ZapGov — Implantação (servidor interno + proxy/DMZ)
 
+Para entregar o sistema a outro órgão, comece pelo
+[guia de implantação de novo órgão](NOVO_ORGAO.md).
+
 Arquitetura na prefeitura:
 
 ```
@@ -86,13 +89,13 @@ SEED_ADMIN_PASSWORD=<senha inicial de 12 a 72 bytes, para instalação nova>
 APP_ENV=production
 LOG_LEVEL=info
 
-# WhatsApp / Meta (do tenant da plataforma; demais órgãos no Super Admin)
+# WhatsApp / Meta (opcional: administrador configura no painel após instalar)
 WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_WABA_ID=
 WHATSAPP_TOKEN=
 WHATSAPP_APP_SECRET=
 WHATSAPP_API_VERSION=v21.0
-WEBHOOK_VERIFY_TOKEN=<string aleatória>
+WEBHOOK_VERIFY_TOKEN=
 
 # Opcional
 SENTRY_DSN=
@@ -115,8 +118,16 @@ SENTRY_DSN=
 
 App Dashboard → WhatsApp → Configuration → Webhook:
 - **Callback URL:** `https://api.SEU-DOMINIO/webhook`
-- **Verify token:** o mesmo `WEBHOOK_VERIFY_TOKEN` do `backend/.env`
+- **Verify token:** o valor salvo em **Configurações → WhatsApp / Meta**.
 - Assinar o campo **messages**.
+
+O administrador informa no painel Phone Number ID, WABA ID, token permanente,
+App Secret, versão da API e Verify Token. O backend cifra os segredos no banco
+com `META_CREDENTIALS_KEY`, que continua no ambiente do servidor e deve ser
+guardada junto ao plano de backup. Campos secretos deixados vazios em edições
+posteriores mantêm os valores já salvos. Para instalações antigas, os valores
+`WHATSAPP_*` e `WEBHOOK_VERIFY_TOKEN` do ambiente seguem como fallback do tenant 1
+enquanto os valores correspondentes não forem cadastrados no banco.
 
 ---
 

@@ -4,8 +4,10 @@ package tenants
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -122,6 +124,34 @@ func (r *Repository) Creds(ctx context.Context, tenantID int64) (MetaCreds, erro
 		return MetaCreds{}, err
 	}
 	return transformSecrets(tenantID, m, openSecret)
+}
+
+// HasVerifyToken valida o handshake da Meta sem expor o token ao painel.
+func (r *Repository) HasVerifyToken(ctx context.Context, token string) bool {
+	if token == "" {
+		return false
+	}
+	rows, err := r.pool.Query(ctx, `SELECT id,webhook_verify_token FROM tenants WHERE ativo AND webhook_verify_token <> ''`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	matched := false
+	for rows.Next() {
+		var id int64
+		var stored string
+		if rows.Scan(&id, &stored) != nil {
+			return false
+		}
+		plain, err := openSecret(stored, "tenant:"+fmt.Sprint(id)+":verify_token")
+		if err != nil {
+			return false
+		}
+		if subtle.ConstantTimeCompare([]byte(plain), []byte(token)) == 1 {
+			matched = true
+		}
+	}
+	return rows.Err() == nil && matched
 }
 
 func (r *Repository) List(ctx context.Context) ([]Tenant, error) {

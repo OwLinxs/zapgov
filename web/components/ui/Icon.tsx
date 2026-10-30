@@ -1,10 +1,10 @@
 import { CSSProperties } from "react";
-import { ICON_PATHS, IconName } from "@/lib/icons";
+import { ICONS, IconName } from "@/lib/icons";
 
 export function Icon({
   name,
-  size = 18,
-  stroke = 1.9,
+  size = 16,
+  stroke = 1.75,
   fill = false,
   style,
   className,
@@ -16,25 +16,11 @@ export function Icon({
   style?: CSSProperties;
   className?: string;
 }) {
-  const def = ICON_PATHS[name];
-  if (!def) return <span className="icon" style={{ width: size, height: size, ...style }} />;
-  const paths = def.split("|");
+  const Cmp = ICONS[name];
+  if (!Cmp) return <span className="icon" style={{ width: size, height: size, ...style }} />;
   return (
-    <span className={"icon " + (className || "")} style={style}>
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill={fill ? "currentColor" : "none"}
-        stroke={fill ? "none" : "currentColor"}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {paths.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </svg>
+    <span className={"icon " + (className || "")} style={style} aria-hidden="true">
+      <Cmp size={size} strokeWidth={stroke} fill={fill ? "currentColor" : "none"} />
     </span>
   );
 }

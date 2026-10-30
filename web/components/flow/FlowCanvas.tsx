@@ -336,7 +336,7 @@ function EditPanel({
       )}
 
       {(node.type === "start" || node.type === "end") && (
-        <p className="muted" style={{ fontSize: 12.5 }}>
+        <p className="muted" style={{ fontSize: 13 }}>
           {node.type === "start" ? "Ponto de entrada do fluxo." : "Encerra a conversa."}
         </p>
       )}

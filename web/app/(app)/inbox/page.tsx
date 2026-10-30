@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Avatar,
   Button,
   ConfirmModal,
@@ -17,6 +18,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { MessageItem, DateDivider, mesmoDia } from "@/components/inbox/MessageItem";
+import { Topbar } from "@/components/shell/Topbar";
 import {
   listConversations,
   listConversationMessages,
@@ -85,8 +87,10 @@ function NovaConversaModal({
   open,
   onClose,
   onSent,
+  presetPhone = "",
 }: {
   open: boolean;
+  presetPhone?: string;
   onClose: () => void;
   onSent: (phone: string) => void;
 }) {
@@ -103,7 +107,7 @@ function NovaConversaModal({
 
   useEffect(() => {
     if (!open) return;
-    setQ("");
+    setQ(presetPhone);
     setContato(null);
     setNumero("");
     setNomeNovo("");
@@ -117,7 +121,7 @@ function NovaConversaModal({
         setTpl(ap[0] ?? null);
       })
       .catch(() => setAprovados([]));
-  }, [open]);
+  }, [open, presetPhone]);
 
   // Ao trocar template/destinatário, reseta variáveis e auto-preenche a {{1}} com
   // o nome COMPLETO do contato (atendente pode editar se quiser só o 1º nome).
@@ -185,8 +189,8 @@ function NovaConversaModal({
             <div className="row center" style={{ gap: 10 }}>
               <Avatar name={contato.nome} size={32} />
               <div className="col" style={{ gap: 0 }}>
-                <span className="strong" style={{ fontSize: 13.5 }}>{contato.nome}</span>
-                <span className="mono faint" style={{ fontSize: 11.5 }}>{contato.telefone}</span>
+                <span className="strong" style={{ fontSize: 14 }}>{contato.nome}</span>
+                <span className="mono faint" style={{ fontSize: 12 }}>{contato.telefone}</span>
               </div>
             </div>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setContato(null)}>
@@ -199,8 +203,8 @@ function NovaConversaModal({
               <div className="row center" style={{ gap: 10 }}>
                 <Avatar name={nomeNovo || "?"} size={32} />
                 <div className="col" style={{ gap: 0 }}>
-                  <span className="strong" style={{ fontSize: 13.5 }}>Número avulso</span>
-                  <span className="mono faint" style={{ fontSize: 11.5 }}>{numero}</span>
+                  <span className="strong" style={{ fontSize: 14 }}>Número avulso</span>
+                  <span className="mono faint" style={{ fontSize: 12 }}>{numero}</span>
                 </div>
               </div>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => { setNumero(""); setNomeNovo(""); }}>
@@ -209,7 +213,7 @@ function NovaConversaModal({
             </div>
             <Input value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} placeholder="Nome da pessoa (ex.: Maria Silva) — NÃO repita o número" />
             {pareceTelefone(nomeNovo) && (
-              <span style={{ fontSize: 11.5, color: "var(--st-pending)" }}>
+              <span style={{ fontSize: 12, color: "var(--st-pending)" }}>
                 ⚠ Isso parece um telefone — digite o NOME da pessoa aqui (o número já está acima).
               </span>
             )}
@@ -218,7 +222,7 @@ function NovaConversaModal({
           <div style={{ border: "1px solid var(--border-subtle)", borderRadius: 9, overflow: "hidden" }}>
             <div style={{ maxHeight: 150, overflowY: "auto" }}>
               {rows.length === 0 ? (
-                <div className="muted" style={{ padding: 16, fontSize: 12.5, textAlign: "center" }}>
+                <div className="muted" style={{ padding: 16, fontSize: 13, textAlign: "center" }}>
                   {podeAvulso ? "Nenhum contato — use o número avulso abaixo." : "Nenhum contato encontrado."}
                 </div>
               ) : (
@@ -244,7 +248,7 @@ function NovaConversaModal({
                 style={{ cursor: "pointer", borderTop: "1px solid var(--border-subtle)", background: "var(--bg-sunken)" }}
                 onClick={() => setNumero(qDigits)}
               >
-                <span className="kpi-ico" style={{ width: 30, height: 30, background: "var(--wa-soft)", color: "var(--wa)" }}>
+                <span className="kpi-ico" style={{ width: 30, height: 30, background: "var(--wa-soft)", color: "var(--wa-deep)" }}>
                   <Icon name="send" size={14} />
                 </span>
                 <div className="col grow" style={{ gap: 0, minWidth: 0 }}>
@@ -259,7 +263,7 @@ function NovaConversaModal({
         <div className="divider" />
         <Field label="2 · Mensagem inicial (template)" hint="Fora da janela de 24h, a Meta exige um template aprovado para iniciar.">
           {aprovados.length === 0 ? (
-            <div className="muted" style={{ fontSize: 12.5 }}>Nenhum template aprovado. Crie e aprove em Templates.</div>
+            <div className="muted" style={{ fontSize: 13 }}>Nenhum template aprovado. Crie e aprove em Templates.</div>
           ) : (
             <select className="select" value={tpl?.name ?? ""} onChange={(e) => setTpl(aprovados.find((t) => t.name === e.target.value) ?? null)}>
               {/* agrupado por grupo de templates (secretaria) */}
@@ -314,7 +318,7 @@ function NovaConversaModal({
               <WaBubble text={corpo} dir="out" highlight status="enviado" time="agora" buttons={tpl.buttons?.length ? tpl.buttons : undefined} />
             </div>
           ) : (
-            <div className="muted" style={{ fontSize: 12.5 }}>Escolha um template para ver a prévia.</div>
+            <div className="muted" style={{ fontSize: 13 }}>Escolha um template para ver a prévia.</div>
           )}
         </div>
       </div>
@@ -482,7 +486,7 @@ function MinhasRespostasModal({
       onChanged();
       toast({ type: "success", title: "Resposta criada" });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     } finally { setSaving(false); }
   }
 
@@ -491,7 +495,7 @@ function MinhasRespostasModal({
       await deleteQuickReply(id);
       onChanged();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -522,13 +526,13 @@ function MinhasRespostasModal({
         <div className="col" style={{ gap: 6 }}>
           <span className="field-label">Minhas ({minhas.length})</span>
           {minhas.length === 0 ? (
-            <span className="muted" style={{ fontSize: 12.5 }}>Nenhuma resposta pessoal ainda.</span>
+            <span className="muted" style={{ fontSize: 13 }}>Nenhuma resposta pessoal ainda.</span>
           ) : (
             minhas.map((q) => (
-              <div key={q.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8, fontSize: 12.5 }}>
+              <div key={q.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8, fontSize: 13 }}>
                 <div className="col grow" style={{ gap: 1, minWidth: 0 }}>
-                  {q.atalho && <span className="strong mono" style={{ fontSize: 11.5 }}>{q.atalho}</span>}
-                  <span className="faint" style={{ fontSize: 11.5 }}>{q.texto}</span>
+                  {q.atalho && <span className="strong mono" style={{ fontSize: 12 }}>{q.atalho}</span>}
+                  <span className="faint" style={{ fontSize: 12 }}>{q.texto}</span>
                 </div>
                 <button className="btn btn-ghost btn-icon btn-sm" title="Excluir" onClick={() => remover(q.id)}>
                   <Icon name="trash" size={13} />
@@ -542,10 +546,10 @@ function MinhasRespostasModal({
           <div className="col" style={{ gap: 6 }}>
             <span className="field-label">Do órgão ({globais.length}) — somente leitura</span>
             {globais.map((q) => (
-              <div key={q.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8, fontSize: 12.5, opacity: 0.8 }}>
+              <div key={q.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8, fontSize: 13, opacity: 0.8 }}>
                 <div className="col grow" style={{ gap: 1, minWidth: 0 }}>
-                  {q.atalho && <span className="strong mono" style={{ fontSize: 11.5 }}>{q.atalho}</span>}
-                  <span className="faint" style={{ fontSize: 11.5 }}>{q.texto}</span>
+                  {q.atalho && <span className="strong mono" style={{ fontSize: 12 }}>{q.atalho}</span>}
+                  <span className="faint" style={{ fontSize: 12 }}>{q.texto}</span>
                 </div>
               </div>
             ))}
@@ -596,6 +600,11 @@ export default function InboxPage() {
   const stickRef = useRef(true); // auto-scroll só quando o usuário está no fim do chat
   const [colisao, setColisao] = useState<string | null>(null); // outro atendente na conversa
   const taRef = useRef<HTMLTextAreaElement>(null); // campo de mensagem (auto-resize)
+  const [novaPhone, setNovaPhone] = useState(""); // template para a conversa aberta
+  // Painel do contato: fixo em ≥1440px, Drawer abaixo disso.
+  const [largo, setLargo] = useState(true);
+  const [painel, setPainel] = useState(true);
+  const [painelSess, setPainelSess] = useState<ApiSession[]>([]);
 
   // Histórico por sessão (drawer)
   const [histOpen, setHistOpen] = useState(false);
@@ -698,7 +707,7 @@ export default function InboxPage() {
       await setConversationLabels(active.id, next);
       await loadConvs();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -723,6 +732,24 @@ export default function InboxPage() {
     resetNotif();
   }, [resetNotif]);
 
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1440px)");
+    const on = () => {
+      setLargo(mq.matches);
+      setPainel(mq.matches);
+    };
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // Atendimentos anteriores do contato (painel lateral).
+  useEffect(() => {
+    setPainelSess([]);
+    if (activeId == null || !painel) return;
+    listSessions(activeId).then(setPainelSess).catch(() => {});
+  }, [activeId, painel]);
+
   async function pegar() {
     if (!active) return;
     try {
@@ -731,7 +758,7 @@ export default function InboxPage() {
       await loadConvs();
       toast({ type: "success", title: "Conversa atribuída a você" });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -811,7 +838,7 @@ export default function InboxPage() {
       await loadConvs();
       toast({ type: "success", title: "Conversa transferida", message: "Setor: " + setor });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -823,7 +850,7 @@ export default function InboxPage() {
       await loadConvs();
       toast({ type: "success", title: "Atendimento resolvido" });
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -839,7 +866,7 @@ export default function InboxPage() {
       }
       await loadConvs();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -928,7 +955,7 @@ export default function InboxPage() {
       toast({ type: "success", title: `${n} conversas finalizadas` });
       await loadConvs();
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
     }
   }
 
@@ -960,310 +987,389 @@ export default function InboxPage() {
     }
   }
 
-  return (
-    <div className="split">
-      {/* Lista de conversas */}
-      <div className="split-list">
-        <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border-subtle)" }}>
-          <div className="row between center" style={{ marginBottom: 12 }}>
-            <h1 style={{ fontSize: 17, fontWeight: 700 }}>Caixa de Entrada</h1>
-            <Button variant="wa" size="sm" icon="plus" onClick={() => setNovaOpen(true)}>
-              Nova conversa
-            </Button>
-          </div>
-          <div className="row center" style={{ gap: 8, marginBottom: 12 }}>
-            <span className="badge badge-pending">{filaAguardando.length} na fila</span>
-            {filaAguardando.length > 0 && (
-              <span className="badge" style={{ background: "transparent", border: "1px solid var(--border-subtle)", color: slaCor(maisAntigaMin) }}>
-                ⏱ mais antiga há {maisAntigaMin} min
-              </span>
-            )}
-            <span className="muted" style={{ fontSize: 11.5 }}>
-              {convs.filter((c) => c.status === "aguardando" || c.status === "em_atendimento").length} abertas
+  const meuNome = user?.nome ?? "";
+  const janelaAberta = !!active?.window_expires_at && new Date(active.window_expires_at) > new Date();
+  const contagem = (st: string) => convs.filter((c) => c.status === st).length;
+
+  // Painel lateral do contato: fixo em telas ≥1440px; abaixo disso abre como Drawer.
+  const painelConteudo = active && (
+    <>
+      <div className="col center" style={{ gap: 6, padding: "20px 16px 16px", borderBottom: "1px solid var(--border-subtle)", textAlign: "center" }}>
+        <Avatar name={nomeOuFone(active)} size={48} citizen />
+        <div style={{ fontSize: 15, lineHeight: "22px", fontWeight: 600, marginTop: 4 }}>{nomeOuFone(active)}</div>
+        <div className="row center" style={{ gap: 4 }}>
+          <span className="mono" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{active.contact_phone}</span>
+          <button
+            className="btn btn-ghost btn-icon btn-sm"
+            style={{ width: 24, height: 24 }}
+            aria-label="Copiar telefone"
+            onClick={() => {
+              navigator.clipboard?.writeText(active.contact_phone).then(() => toast({ type: "success", title: "Telefone copiado" }));
+            }}
+          >
+            <Icon name="copy" size={14} />
+          </button>
+        </div>
+        {active.opt_out ? (
+          <span className="badge badge-failed"><Icon name="ban" size={14} />Não aceita mensagens</span>
+        ) : (
+          <span className="badge badge-read"><Icon name="checkCircle" size={14} />Aceita mensagens</span>
+        )}
+      </div>
+      <section style={{ padding: 16, borderBottom: "1px solid var(--border-subtle)" }}>
+        <h2 className="section-title">Atendimento</h2>
+        <dl className="zg-dl" style={{ gridTemplateColumns: "104px 1fr" }}>
+          <dt>Setor</dt>
+          <dd>{active.setor || "Sem setor"}</dd>
+          <dt>Atendente</dt>
+          <dd>{active.atendente ? (active.atendente === meuNome ? "Você" : active.atendente) : "—"}</dd>
+          <dt>Janela 24h</dt>
+          <dd style={{ color: janelaAberta ? "var(--wa-deep)" : "var(--st-failed)", fontWeight: 600 }}>{janelaAberta ? "Aberta" : "Encerrada"}</dd>
+          {Object.entries(active.dados ?? {}).map(([k, v]) => (
+            <Fragment key={k}>
+              <dt style={{ textTransform: "capitalize" }}>{k}</dt>
+              <dd style={{ overflowWrap: "anywhere" }}>{v}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      </section>
+      <section style={{ padding: 16, borderBottom: "1px solid var(--border-subtle)" }}>
+        <h2 className="section-title">Etiquetas</h2>
+        <div className="row wrap" style={{ gap: 6 }}>
+          {(active.labels ?? []).map((l) => (
+            <span key={l.id} className="tag">
+              <span className="tag-dot" style={{ background: l.cor }} />
+              {l.nome}
             </span>
+          ))}
+          <Dropdown
+            trigger={
+              <button className="btn btn-ghost btn-sm" style={{ height: 24, padding: "0 6px" }}>
+                <Icon name="plus" size={14} />
+                Adicionar
+              </button>
+            }
+          >
+            <div className="dropdown-label">Etiquetas</div>
+            {labels.length === 0 ? (
+              <div className="dropdown-item muted">Nenhuma etiqueta cadastrada</div>
+            ) : (
+              labels.map((l) => {
+                const on = (active.labels ?? []).some((x) => x.id === l.id);
+                return (
+                  <div key={l.id} className="dropdown-item" onClick={() => toggleLabel(l.id)}>
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: l.cor, flex: "none" }} />
+                    <span className="grow">{l.nome}</span>
+                    {on && <Icon name="check" size={14} />}
+                  </div>
+                );
+              })
+            )}
+          </Dropdown>
+        </div>
+      </section>
+      <section style={{ padding: 16 }}>
+        <div className="row between center" style={{ marginBottom: 8 }}>
+          <h2 className="section-title" style={{ margin: 0 }}>Atendimentos anteriores</h2>
+          <button className="btn btn-ghost btn-sm" style={{ height: 24, padding: "0 6px" }} onClick={abrirHistorico}>
+            Ver tudo
+          </button>
+        </div>
+        {painelSess.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Nenhum atendimento anterior.</p>
+        ) : (
+          <div className="col" style={{ gap: 2 }}>
+            {painelSess.slice(0, 5).map((s) => (
+              <button
+                key={s.id}
+                className="col"
+                onClick={() => {
+                  setHistOpen(true);
+                  abrirSessao(s);
+                }}
+                style={{ gap: 2, padding: "8px 10px", margin: "0 -10px", border: 0, borderRadius: "var(--radius-md)", background: "transparent", textAlign: "left", color: "var(--text-primary)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <span className="row center" style={{ gap: 8, width: "100%" }}>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>#{s.id}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-tertiary)" }}>{new Date(s.iniciada_em).toLocaleDateString("pt-BR")}</span>
+                </span>
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                  {[s.setor, s.atendente].filter(Boolean).join(" · ") || "Sem setor"}
+                </span>
+              </button>
+            ))}
           </div>
+        )}
+      </section>
+    </>
+  );
+
+  return (
+    <div className="col" style={{ height: "100%" }}>
+      <Topbar
+        title="Caixa de Entrada"
+        actions={
+          <Button variant="primary" size="sm" icon="plus" onClick={() => setNovaOpen(true)}>
+            Nova conversa
+          </Button>
+        }
+      />
+    <div className="split" style={{ flex: 1, minHeight: 0, height: "auto" }}>
+      {/* Lista de conversas */}
+      <section className="split-list" aria-label="Conversas">
+        <div className="col" style={{ gap: 10, padding: "12px 12px 10px", borderBottom: "1px solid var(--border)" }}>
           <div className="row" style={{ gap: 8 }}>
             <div className="grow">
-              <Input icon="search" placeholder="Buscar nome, telefone, CPF ou mensagem…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input icon="search" aria-label="Buscar conversa" placeholder="Buscar nome, telefone, CPF ou mensagem" value={q} onChange={(e) => setQ(e.target.value)} style={{ height: 32 }} />
             </div>
-            <select className="select" style={{ width: "auto" }} value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}>
-              <option>Todos</option>
+          </div>
+          <div className="segmented" role="group" aria-label="Status da conversa" style={{ display: "flex" }}>
+            {[
+              ...(canTodas ? [{ value: "", label: "Todas", n: contagem("aguardando") + contagem("em_atendimento") }] : []),
+              { value: "aguardando", label: "Na fila", n: contagem("aguardando") },
+              { value: "em_atendimento", label: "Atendendo", n: contagem("em_atendimento") },
+              { value: "resolvido", label: "Finalizadas", n: -1 },
+            ].map((t) => (
+              <button
+                key={t.value}
+                className={filter === t.value ? "active" : ""}
+                aria-pressed={filter === t.value}
+                onClick={() => setFilter(t.value)}
+                style={{ flex: 1, padding: "0 6px" }}
+              >
+                {t.label}
+                {t.n >= 0 && <span className="zg-count">{t.n}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="row center" style={{ gap: 6 }}>
+            <select className="select" aria-label="Setor" style={{ width: "auto", height: 28, fontSize: 13, flex: 1, minWidth: 0 }} value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}>
+              <option value="Todos">Setor: todos</option>
               {deps.map((d) => (
-                <option key={d.id}>{d.nome}</option>
+                <option key={d.id} value={d.nome}>
+                  {d.nome}
+                </option>
               ))}
             </select>
-          </div>
-          <div className="row between center" style={{ gap: 6, marginTop: 10 }}>
-            <Segmented
-              value={filter}
-              onChange={setFilter}
-              options={[
-                ...(canTodas ? [{ value: "", label: "Todas" }] : []),
-                { value: "aguardando", label: "Fila" },
-                { value: "em_atendimento", label: "Atendendo" },
-                { value: "resolvido", label: "Finalizados" },
-              ]}
-            />
             {atendentes.length > 0 && (
-              <select className="select" style={{ width: "auto" }} value={atendenteFiltro} onChange={(e) => setAtendenteFiltro(e.target.value)}>
-                <option>Todos</option>
+              <select className="select" aria-label="Atendente" style={{ width: "auto", height: 28, fontSize: 13, flex: 1, minWidth: 0 }} value={atendenteFiltro} onChange={(e) => setAtendenteFiltro(e.target.value)}>
+                <option value="Todos">Atendente: todos</option>
                 {atendentes.map((a) => (
-                  <option key={a}>{a}</option>
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
                 ))}
               </select>
             )}
           </div>
-          {canTodas && ativasFiltradas.length > 0 && (
-            <Button variant="secondary" size="sm" icon="check" className="btn-block" style={{ marginTop: 8 }} onClick={() => setBulkConfirm(true)}>
-              Finalizar todas ({ativasFiltradas.length})
-            </Button>
+          {(filaAguardando.length > 0 || (canTodas && ativasFiltradas.length > 0)) && (
+            <div className="row center" style={{ gap: 8, fontSize: 12, color: "var(--text-tertiary)" }}>
+              {filaAguardando.length > 0 && (
+                <span className="row center" style={{ gap: 4, fontWeight: 600, color: slaCor(maisAntigaMin) }}>
+                  <Icon name="clock" size={14} />
+                  Mais antiga na fila há {maisAntigaMin} min
+                </span>
+              )}
+              {canTodas && ativasFiltradas.length > 0 && (
+                <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto", height: 24, padding: "0 6px" }} onClick={() => setBulkConfirm(true)}>
+                  <Icon name="archive" size={14} />
+                  Finalizar todas ({ativasFiltradas.length})
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div className="scroll-y grow">
           {erro ? (
-            <EmptyState icon="alertCircle" title="API indisponível" sub={erro} />
+            <EmptyState error title="Não foi possível carregar as conversas" sub={erro} action={<Button size="sm" icon="refresh" onClick={loadConvs}>Tentar novamente</Button>} />
           ) : lista.length === 0 ? (
-            <EmptyState icon="message" title={buscandoServer ? "Nada encontrado" : "Nenhuma conversa"} sub={buscandoServer ? "Nada com esse nome, telefone, CPF ou conteúdo." : "Envie ou receba uma mensagem para começar."} />
+            <EmptyState
+              icon="inbox"
+              title={buscandoServer && q ? "Nada encontrado" : filter === "aguardando" ? "Ninguém na fila" : "Nenhuma conversa"}
+              sub={buscandoServer && q ? "Nada com esse nome, telefone, CPF ou conteúdo." : "Quando um cidadão escrever, a conversa aparece aqui."}
+            />
           ) : (
-            lista.map((c) => (
-              <div
-                key={c.id}
-                className={"conv-item" + (c.id === activeId ? " active" : "")}
-                onClick={() => {
-                  setActiveId(c.id);
-                  // Zera o contador na hora (otimista); o backend marca como lida ao carregar.
-                  if (c.unread_count > 0) {
-                    setConvs((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread_count: 0 } : x)));
-                  }
-                }}
-              >
-                <Avatar name={nomeOuFone(c)} size={42} />
-                <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
-                  <div className="row between center">
-                    <span className="strong" style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {nomeOuFone(c)}
+            lista.map((c) => {
+              const unread = c.unread_count > 0;
+              const outro = c.status === "em_atendimento" && c.atendente && c.atendente !== meuNome;
+              return (
+                <button
+                  key={c.id}
+                  className={"conv-item" + (c.id === activeId ? " active" : "")}
+                  aria-current={c.id === activeId ? "true" : undefined}
+                  style={{ width: "100%", border: 0, borderBottom: "1px solid var(--border-subtle)", background: c.id === activeId ? undefined : "transparent", textAlign: "left", color: "inherit", font: "inherit" }}
+                  onClick={() => {
+                    setActiveId(c.id);
+                    // Zera o contador na hora (otimista); o backend marca como lida ao carregar.
+                    if (unread) setConvs((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread_count: 0 } : x)));
+                  }}
+                >
+                  <Avatar name={nomeOuFone(c)} size={36} citizen />
+                  <span className="col grow" style={{ gap: 2, minWidth: 0 }}>
+                    <span className="row" style={{ gap: 8, alignItems: "baseline" }}>
+                      <span className="grow" style={{ minWidth: 0, fontSize: 14, lineHeight: "20px", fontWeight: unread ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {nomeOuFone(c)}
+                      </span>
+                      <span className="mono" style={{ fontSize: 11, color: unread ? "var(--wa-deep)" : "var(--text-tertiary)", fontWeight: unread ? 600 : 400, flex: "none" }}>
+                        {hhmm(c.last_msg_at)}
+                      </span>
                     </span>
-                    <span style={{ fontSize: 11, color: c.unread_count > 0 ? "var(--wa)" : "var(--text-faint)", fontWeight: c.unread_count > 0 ? 700 : 400, flex: "none" }}>
-                      {hhmm(c.last_msg_at)}
+                    <span className="row center" style={{ gap: 4, fontSize: 13, lineHeight: "18px", color: unread ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                      <span className="grow" style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.last_message || "—"}</span>
+                      {unread && (
+                        <span className="zg-unread" aria-label={c.unread_count + " não lidas"}>
+                          {c.unread_count}
+                        </span>
+                      )}
                     </span>
-                  </div>
-                  <div className="row between center" style={{ gap: 8 }}>
-                    <span style={{ fontSize: 12.5, color: c.unread_count > 0 ? "var(--text-primary)" : "var(--text-tertiary)", fontWeight: c.unread_count > 0 ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {c.last_message || "—"}
+                    <span className="row center wrap" style={{ gap: 6, marginTop: 4, minHeight: 22 }}>
+                      {c.setor && (
+                        <span className="tag">
+                          <span className="tag-dot" style={{ background: deps.find((d) => d.nome === c.setor)?.cor || "var(--text-faint)" }} />
+                          {c.setor}
+                        </span>
+                      )}
+                      {(c.labels ?? []).map((l) => (
+                        <span key={l.id} className="tag" title={l.nome}>
+                          <span className="tag-dot" style={{ background: l.cor }} />
+                          {l.nome}
+                        </span>
+                      ))}
+                      {c.status === "aguardando" && c.queued_at && (
+                        <span
+                          className="row center"
+                          style={{ gap: 4, fontSize: 12, fontWeight: 600, color: slaCor(esperaMin(c)) }}
+                          title={`Aguardando há ${esperaMin(c)} min (meta: ${slaMin} min)`}
+                        >
+                          <Icon name="clock" size={14} />
+                          {esperaMin(c)} min
+                        </span>
+                      )}
+                      {c.status === "resolvido" && <span className="badge badge-read" style={{ height: 20 }}>Finalizada</span>}
+                      {/* Quem está atendendo: bate o olho e vê de quem é a conversa. */}
+                      {c.status === "em_atendimento" && c.atendente && (
+                        <span className="row center" style={{ marginLeft: "auto", gap: 6, fontSize: 12, color: outro ? "var(--text-tertiary)" : "var(--brand-text)", fontWeight: outro ? 400 : 600 }} title={"Em atendimento por " + c.atendente}>
+                          {outro ? c.atendente.split(" ")[0] : "Você"}
+                          <Avatar name={c.atendente} size={24} />
+                        </span>
+                      )}
                     </span>
-                    {c.unread_count > 0 && (
-                      <span style={{ background: "var(--wa-deep)", color: "white", fontSize: 10.5, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 99, display: "grid", placeItems: "center", padding: "0 5px", flex: "none" }}>
-                        {c.unread_count}
-                      </span>
-                    )}
-                  </div>
-                  <div className="row center wrap" style={{ gap: 6 }}>
-                    {c.status && STATUS_BADGE[c.status] && (
-                      <span className={"badge " + STATUS_BADGE[c.status].cls} style={{ height: 18, fontSize: 10.5 }}>
-                        {STATUS_BADGE[c.status].label}
-                      </span>
-                    )}
-                    {c.status === "aguardando" && c.queued_at && (
-                      <span
-                        className="badge"
-                        style={{ height: 18, fontSize: 10.5, background: "transparent", border: "1px solid var(--border-subtle)", color: slaCor(esperaMin(c)), fontWeight: 700 }}
-                        title={`Aguardando há ${esperaMin(c)} min (SLA: ${slaMin} min)`}
-                      >
-                        ⏱ {esperaMin(c)}m
-                      </span>
-                    )}
-                    {(c.labels ?? []).map((l) => (
-                      <span
-                        key={l.id}
-                        title={l.nome}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 17, padding: "0 6px", borderRadius: 99, fontSize: 10, fontWeight: 600, color: l.cor, background: "color-mix(in oklch, " + l.cor + " 16%, transparent)" }}
-                      >
-                        <span style={{ width: 6, height: 6, borderRadius: 99, background: l.cor }} />
-                        {l.nome}
-                      </span>
-                    ))}
-                    {c.setor && (
-                      <span className="mono faint" style={{ fontSize: 10.5 }}>
-                        {c.setor}
-                      </span>
-                    )}
-                    {/* Quem está atendendo (D): bate o olho e vê de quem é a conversa. */}
-                    {c.status === "em_atendimento" && c.atendente && (
-                      <span
-                        className="row center"
-                        style={{ gap: 4, fontSize: 10.5, fontWeight: 600, color: c.atendente === (user?.nome ?? "") ? "var(--wa)" : "var(--text-tertiary)" }}
-                        title={"Em atendimento por " + c.atendente}
-                      >
-                        <Avatar name={c.atendente} size={14} />
-                        {c.atendente === (user?.nome ?? "") ? "você" : c.atendente.split(" ")[0]}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
-      </div>
+      </section>
 
       {/* Detalhe da conversa */}
       {active ? (
-        <div className="split-detail">
-          <div className="row between center" style={{ padding: "12px 20px", borderBottom: "1px solid var(--border-subtle)", flex: "none" }}>
-            <div className="row center" style={{ gap: 12 }}>
-              <Avatar name={nomeOuFone(active)} size={38} />
-              <div className="col" style={{ gap: 1 }}>
-                <span style={{ fontWeight: 700, fontSize: 14.5 }}>{nomeOuFone(active)}</span>
-                <span className="mono" style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>
-                  {active.contact_phone}
-                  {active.window_expires_at && new Date(active.window_expires_at) > new Date() ? (
-                    <span style={{ color: "var(--wa)" }}> · janela aberta</span>
+        <section className="split-detail" aria-label={"Conversa com " + nomeOuFone(active)} style={{ minWidth: 0 }}>
+          <div className="row center" style={{ gap: 12, height: 64, flex: "none", padding: "0 16px", borderBottom: "1px solid var(--border)" }}>
+            <Avatar name={nomeOuFone(active)} size={36} citizen />
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="row center" style={{ gap: 8 }}>
+                <span style={{ fontSize: 15, lineHeight: "22px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nomeOuFone(active)}</span>
+                {active.status === "aguardando" && <span className="badge badge-pending">Na fila{active.queued_at ? " · " + esperaMin(active) + " min" : ""}</span>}
+                {active.status === "em_atendimento" &&
+                  (active.atendente === meuNome ? (
+                    <span className="badge badge-brand">Em atendimento · você</span>
                   ) : (
-                    <span style={{ color: "var(--st-failed)" }}> · janela fechada (use template)</span>
-                  )}
-                </span>
+                    <span className="badge badge-outline">Com {active.atendente || "outro atendente"}</span>
+                  ))}
+                {active.status === "resolvido" && <span className="badge badge-read">Finalizada</span>}
+                {active.opt_out && (
+                  <span className="badge badge-failed">
+                    <Icon name="ban" size={14} />
+                    Opt-out
+                  </span>
+                )}
+              </div>
+              <div className="mono" style={{ fontSize: 12, lineHeight: "16px", color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {active.contact_phone}
+                {active.setor ? " · " + active.setor : ""}
               </div>
             </div>
-            <div className="row center" style={{ gap: 8 }}>
-              {active.status === "aguardando" && (
-                <Button variant="primary" size="sm" icon="reply" onClick={pegar}>
-                  Pegar conversa
-                </Button>
-              )}
-              {active.status === "em_atendimento" && (
-                <>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    Atendente: <span className="strong">{active.atendente || "—"}</span>
-                  </span>
-                  {active.atendente !== (user?.nome ?? "") && (
-                    <Button variant="primary" size="sm" icon="reply" onClick={pegar} title="Puxar a conversa para você">
-                      Assumir
-                    </Button>
-                  )}
-                  <Button variant="secondary" size="sm" icon="check" onClick={resolver}>
-                    Resolver
-                  </Button>
-                </>
-              )}
-              {active.status === "resolvido" && <span className="badge badge-read">Resolvido</span>}
-              {active.opt_out && (
-                <span className="badge badge-failed">
-                  <Icon name="ban" size={11} /> Opt-out
-                </span>
-              )}
-              <Button variant="ghost" size="sm" icon="history" onClick={abrirHistorico}>
-                Histórico
+            {active.status === "aguardando" && (
+              <Button variant="primary" icon="userCheck" onClick={pegar}>
+                Assumir conversa
               </Button>
-              <button
-                className="btn btn-ghost btn-icon btn-sm"
-                title="Fechar conversa (volta a contar mensagens não lidas)"
-                onClick={() => setActiveId(null)}
-              >
-                <Icon name="x" size={16} />
-              </button>
+            )}
+            {active.status === "em_atendimento" && active.atendente !== meuNome && (
+              <Button variant="secondary" size="sm" icon="userCheck" onClick={pegar} title="Puxar a conversa para você">
+                Assumir
+              </Button>
+            )}
+            {active.status !== "resolvido" && deps.length > 0 && (
               <Dropdown
                 trigger={
-                  <button className="btn btn-ghost btn-icon btn-sm" title="Etiquetas">
-                    <Icon name="tag" size={16} />
-                  </button>
+                  <Button variant="secondary" size="sm" icon="transfer">
+                    Transferir
+                  </Button>
                 }
               >
-                <div className="dropdown-label">Etiquetas</div>
-                {labels.length === 0 ? (
-                  <div className="dropdown-item muted">Nenhuma etiqueta</div>
-                ) : (
-                  labels.map((l) => {
-                    const on = (active.labels ?? []).some((x) => x.id === l.id);
-                    return (
-                      <div key={l.id} className="dropdown-item" onClick={() => toggleLabel(l.id)}>
-                        <span style={{ width: 10, height: 10, borderRadius: 3, background: l.cor, flex: "none" }} />
-                        <span className="grow">{l.nome}</span>
-                        {on && <Icon name="check" size={14} />}
-                      </div>
-                    );
-                  })
-                )}
-              </Dropdown>
-              <Dropdown
-                trigger={
-                  <button className="btn btn-ghost btn-icon btn-sm">
-                    <Icon name="more" size={16} />
-                  </button>
-                }
-              >
-                <div className="dropdown-item" onClick={() => loadMsgs(active.id)}>
-                  <Icon name="refresh" size={15} /> Atualizar
-                </div>
-                {deps.length > 0 && active.status !== "resolvido" && (
-                  <>
-                    <div className="dropdown-sep" />
-                    <div className="dropdown-label">Transferir para</div>
-                    {deps
-                      .filter((d) => d.nome !== active.setor)
-                      .map((d) => (
-                        <div key={d.id} className="dropdown-item" onClick={() => transferir(d.nome)}>
-                          <span style={{ width: 10, height: 10, borderRadius: 3, background: d.cor, flex: "none" }} />
-                          {d.nome}
-                        </div>
-                      ))}
-                  </>
-                )}
-                {active.status !== "resolvido" && (
-                  <>
-                    <div className="dropdown-sep" />
-                    <div className="dropdown-item" onClick={resolver}>
-                      <Icon name="check" size={15} /> Finalizar atendimento
-                    </div>
-                  </>
-                )}
-                <div className="dropdown-sep" />
-                <div className={"dropdown-item" + (active.opt_out ? "" : " danger")} onClick={toggleOptOut}>
-                  <Icon name={active.opt_out ? "check" : "ban"} size={15} />
-                  {active.opt_out ? "Recadastrar contato" : "Descadastrar (opt-out)"}
-                </div>
-              </Dropdown>
-            </div>
-          </div>
-
-          {/* Dados coletados pelo bot + setor encaminhado (entregue ao atendente) */}
-          {(active.setor || (active.dados && Object.keys(active.dados).length > 0)) && (
-            <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-sunken)", flex: "none" }}>
-              <div className="row center" style={{ gap: 8, marginBottom: active.dados && Object.keys(active.dados).length > 0 ? 8 : 0 }}>
-                <span className="field-label">Atendimento</span>
-                {active.setor && (
-                  <span className="badge badge-brand">
-                    <Icon name="building" size={11} /> {active.setor}
-                  </span>
-                )}
-              </div>
-              {active.dados && Object.keys(active.dados).length > 0 && (
-                <div className="row wrap" style={{ gap: 14 }}>
-                  {Object.entries(active.dados).map(([k, v]) => (
-                    <div key={k} className="col" style={{ gap: 1 }}>
-                      <span className="faint" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                        {k}
-                      </span>
-                      <span className="strong" style={{ fontSize: 12.5 }}>
-                        {v}
-                      </span>
+                <div className="dropdown-label">Transferir para</div>
+                {deps
+                  .filter((d) => d.nome !== active.setor)
+                  .map((d) => (
+                    <div key={d.id} className="dropdown-item" onClick={() => transferir(d.nome)}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: d.cor, flex: "none" }} />
+                      {d.nome}
                     </div>
                   ))}
-                </div>
-              )}
-            </div>
-          )}
+              </Dropdown>
+            )}
+            {active.status === "em_atendimento" && (
+              <Button variant="secondary" size="sm" icon="archive" onClick={resolver}>
+                Finalizar
+              </Button>
+            )}
+            <Dropdown
+              trigger={
+                <button className="btn btn-ghost btn-icon btn-sm" aria-label="Mais ações">
+                  <Icon name="more" size={16} />
+                </button>
+              }
+            >
+              <div className="dropdown-item" onClick={() => loadMsgs(active.id)}>
+                <Icon name="refresh" size={16} /> Atualizar mensagens
+              </div>
+              <div className="dropdown-item" onClick={abrirHistorico}>
+                <Icon name="history" size={16} /> Histórico de atendimentos
+              </div>
+              <div className="dropdown-item" onClick={() => setActiveId(null)}>
+                <Icon name="x" size={16} /> Fechar conversa
+              </div>
+              <div className="dropdown-sep" />
+              <div className={"dropdown-item" + (active.opt_out ? "" : " danger")} onClick={toggleOptOut}>
+                <Icon name={active.opt_out ? "check" : "ban"} size={16} />
+                {active.opt_out ? "Recadastrar contato" : "Descadastrar (opt-out)"}
+              </div>
+            </Dropdown>
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              aria-label="Painel do contato"
+              aria-pressed={painel}
+              onClick={() => setPainel((v) => !v)}
+              style={{ background: painel ? "var(--bg-active)" : undefined }}
+            >
+              <Icon name="panelRight" size={16} />
+            </button>
+          </div>
 
           <div
             ref={scrollRef}
-            className="wa-canvas scroll-y grow"
-            style={{ borderRadius: 0, margin: 0 }}
+            className="zg-chat scroll-y grow"
+            style={{ padding: "16px 24px" }}
             onScroll={(e) => {
               const el = e.currentTarget;
               stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
             }}
           >
             {msgs.length === 0 ? (
-              <div className="muted" style={{ textAlign: "center", padding: 24, fontSize: 12.5 }}>
+              <div className="muted" style={{ textAlign: "center", padding: 24, fontSize: 13 }}>
                 Sem mensagens ainda.
               </div>
             ) : (
@@ -1279,121 +1385,118 @@ export default function InboxPage() {
             )}
           </div>
 
-          <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border-subtle)", flex: "none" }}>
+          <div style={{ flex: "none", padding: "10px 16px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-surface)" }}>
             {active.opt_out ? (
-              <div className="row center" style={{ gap: 8, padding: "10px 12px", borderRadius: 8, background: "var(--st-failed-soft)", color: "var(--st-failed)", fontSize: 12.5, fontWeight: 600 }}>
-                <Icon name="ban" size={15} /> Contato descadastrou (opt-out) — não é possível enviar mensagens. Recadastre pelo menu se ele autorizar.
+              <Alert tone="err" icon="ban">
+                <b>Este contato pediu para não receber mensagens (opt-out).</b> Recadastre pelo menu de ações somente se ele autorizar.
+              </Alert>
+            ) : active.status === "aguardando" ? (
+              <div className="row center" style={{ gap: 12, padding: "4px 0" }}>
+                <div className="grow" style={{ fontSize: 13, lineHeight: "18px", color: "var(--text-secondary)" }}>
+                  <b style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                    Esta conversa está na fila{active.setor ? " de " + active.setor : ""}
+                    {active.queued_at ? " há " + esperaMin(active) + " min" : ""}.
+                  </b>{" "}
+                  Assuma para responder; o cidadão vê o seu nome a partir da primeira mensagem.
+                </div>
+                <Button variant="primary" icon="userCheck" onClick={pegar}>
+                  Assumir conversa
+                </Button>
               </div>
             ) : (
               <>
+                {!janelaAberta && !notaMode && (
+                  <Alert tone="warn" icon="clock" style={{ marginBottom: 10 }}>
+                    <b>A janela de 24 horas foi encerrada.</b> A Meta só permite responder com um template aprovado até o cidadão escrever de novo.
+                  </Alert>
+                )}
+                <div className="row center" style={{ gap: 8, marginBottom: 8 }}>
+                  <div className="segmented" role="group" aria-label="Tipo de mensagem">
+                    <button className={!notaMode ? "active" : ""} aria-pressed={!notaMode} onClick={() => setNotaMode(false)}>
+                      <Icon name="reply" size={14} />
+                      Responder
+                    </button>
+                    <button className={notaMode ? "active" : ""} aria-pressed={notaMode} onClick={() => setNotaMode(true)}>
+                      <Icon name="note" size={14} />
+                      Nota interna
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                    {notaMode ? "Só a equipe vê. Não é enviada ao cidadão." : janelaAberta ? "Janela de 24 horas aberta." : "Fora da janela: use um template."}
+                  </span>
+                </div>
                 {replyTo && !notaMode && (
-                  <div className="row center" style={{ gap: 10, marginBottom: 8, padding: "7px 10px", borderRadius: 9, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)" }}>
-                    <div className="col grow" style={{ gap: 1, borderLeft: "3px solid var(--wa)", paddingLeft: 9, minWidth: 0 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--wa)" }}>
+                  <div className="row center" style={{ gap: 10, marginBottom: 8, padding: "7px 10px", borderRadius: "var(--radius-md)", background: "var(--bg-sunken)" }}>
+                    <div className="col grow" style={{ gap: 1, borderLeft: "3px solid var(--brand)", paddingLeft: 9, minWidth: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--brand-text)" }}>
                         Respondendo a {replyTo.direction === "in" ? nomeOuFone(active) : "você"}
                       </span>
-                      <span className="faint" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {replyTo.body || (replyTo.media_type ? "[" + replyTo.media_type + "]" : "")}
                       </span>
                     </div>
-                    <button className="btn btn-ghost btn-icon btn-sm" title="Cancelar resposta" onClick={() => setReplyTo(null)}>
+                    <button className="btn btn-ghost btn-icon btn-sm" aria-label="Cancelar resposta" onClick={() => setReplyTo(null)}>
                       <Icon name="x" size={14} />
                     </button>
                   </div>
                 )}
                 {gravando ? (
-                  <div className="row center" style={{ gap: 12, height: 42 }}>
+                  <div className="row center" style={{ gap: 12, height: 48, padding: "0 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)" }}>
                     <span style={{ width: 10, height: 10, borderRadius: 99, background: "var(--st-failed)", animation: "pulse 1s infinite" }} />
                     <span className="mono strong" style={{ fontSize: 14 }}>
                       {String(Math.floor(recSeg / 60)).padStart(2, "0")}:{String(recSeg % 60).padStart(2, "0")}
                     </span>
-                    <span className="muted grow" style={{ fontSize: 12.5 }}>Gravando áudio…</span>
-                    <Button variant="ghost" size="sm" onClick={() => pararGravacao(true)}>Cancelar</Button>
-                    <Button variant="wa" style={{ height: 42, width: 42, padding: 0 }} onClick={() => pararGravacao(false)} title="Enviar áudio">
-                      <Icon name="send" size={18} />
+                    <span className="grow" style={{ fontSize: 13, color: "var(--text-secondary)" }}>Gravando áudio…</span>
+                    <Button variant="ghost" size="sm" onClick={() => pararGravacao(true)}>
+                      Cancelar
+                    </Button>
+                    <Button variant="primary" size="sm" icon="send" onClick={() => pararGravacao(false)}>
+                      Enviar áudio
                     </Button>
                   </div>
                 ) : (
-                <div className="row" style={{ gap: 9, alignItems: "flex-end" }}>
-                  <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Enviar mídia" onClick={() => setMidiaOpen(true)}>
-                    <Icon name="attach" size={18} />
-                  </button>
-                  <Dropdown
-                    up
-                    trigger={
-                      <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Respostas rápidas">
-                        <Icon name="zap" size={18} />
-                      </button>
-                    }
+                  <div
+                    style={{
+                      position: "relative",
+                      border: "1px solid " + (notaMode ? "var(--st-pending)" : "var(--border)"),
+                      borderRadius: "var(--radius-lg)",
+                      background: notaMode ? "var(--bubble-note)" : "var(--bg-surface)",
+                    }}
                   >
-                    <div className="dropdown-label">Respostas rápidas</div>
-                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                      {quickReplies.length === 0 && (
-                        <div className="dropdown-item muted">Nenhuma ainda — crie a sua ↓</div>
-                      )}
-                      {quickReplies.map((qr) => (
-                        <div key={qr.id} className="dropdown-item" style={{ alignItems: "flex-start" }} onClick={() => setDraft((d) => (d ? d + " " : "") + qr.texto)}>
-                          <div className="col" style={{ gap: 1, minWidth: 0 }}>
-                            <span className="row center" style={{ gap: 6 }}>
-                              {qr.atalho && <span className="strong" style={{ fontSize: 12 }}>{qr.atalho}</span>}
-                              {qr.minha && <span className="badge badge-neutral" style={{ fontSize: 9 }}>minha</span>}
-                            </span>
-                            <span className="faint" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{qr.texto}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="dropdown-sep" />
-                    <div className="dropdown-item" onClick={() => setQrOpen(true)}>
-                      <Icon name="settings" size={14} /> Gerenciar minhas respostas
-                    </div>
-                  </Dropdown>
-                  <button
-                    className={"btn btn-icon" + (notaMode ? "" : " btn-ghost")}
-                    style={{ height: 42, width: 42, background: notaMode ? "var(--st-pending-soft)" : undefined, color: notaMode ? "var(--st-pending)" : undefined }}
-                    title="Nota interna (só a equipe vê)"
-                    onClick={() => setNotaMode((v) => !v)}
-                  >
-                    <Icon name="edit" size={18} />
-                  </button>
-                  <div className="grow" style={{ position: "relative" }}>
                     {/* Autocomplete de respostas rápidas: digite / + atalho */}
                     {slashMatches.length > 0 && (
-                      <div
-                        style={{
-                          position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0, zIndex: 30,
-                          background: "var(--bg-elevated, var(--bg-surface))", border: "1px solid var(--border)",
-                          borderRadius: 10, boxShadow: "0 8px 28px rgba(0,0,0,.25)", overflow: "hidden", maxHeight: 240, overflowY: "auto",
-                        }}
-                      >
+                      <div className="dropdown" style={{ bottom: "calc(100% + 6px)", left: 0, right: 0, maxHeight: 240, overflowY: "auto" }}>
                         {slashMatches.map((qr, i) => (
                           <div
                             key={qr.id}
-                            onClick={() => { setDraft(qr.texto); setSlashOff(true); }}
-                            style={{
-                              padding: "9px 12px", cursor: "pointer", fontSize: 12.5,
-                              background: i === 0 ? "var(--brand-soft)" : "transparent",
-                              borderBottom: "1px solid var(--border-subtle)",
+                            className="dropdown-item"
+                            onClick={() => {
+                              setDraft(qr.texto);
+                              setSlashOff(true);
                             }}
+                            style={{ flexDirection: "column", alignItems: "stretch", gap: 2, padding: "8px 10px", background: i === 0 ? "var(--bg-hover)" : undefined }}
                           >
                             <div className="row center" style={{ gap: 7 }}>
-                              {qr.atalho && <span className="strong mono" style={{ fontSize: 11.5 }}>{qr.atalho}</span>}
-                              {qr.minha && <span className="badge badge-neutral" style={{ fontSize: 9 }}>minha</span>}
-                              {i === 0 && <span className="faint" style={{ fontSize: 10, marginLeft: "auto" }}>Tab ou Enter ↵</span>}
+                              {qr.atalho && <span className="mono strong" style={{ fontSize: 12 }}>{qr.atalho}</span>}
+                              {qr.minha && <span className="badge badge-neutral" style={{ height: 18, fontSize: 11 }}>minha</span>}
+                              {i === 0 && <span className="kbd" style={{ marginLeft: "auto" }}>Enter</span>}
                             </div>
-                            <div className="faint" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{qr.texto}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{qr.texto}</div>
                           </div>
                         ))}
                       </div>
                     )}
                     <textarea
                       ref={taRef}
-                      className="input"
-                      rows={1}
-                      style={{ width: "100%", minHeight: 42, maxHeight: 140, resize: "none", overflowY: "auto", lineHeight: 1.4, padding: "10px 12px", background: notaMode ? "var(--st-pending-soft)" : undefined, borderColor: notaMode ? "var(--st-pending)" : undefined }}
-                      placeholder={notaMode ? "Nota interna (não vai pro cidadão)…" : "Digite uma resposta… (Enter envia · Shift+Enter quebra linha · / = atalhos)"}
+                      rows={2}
+                      aria-label={notaMode ? "Nota interna" : "Mensagem para o cidadão"}
+                      style={{ display: "block", width: "100%", minHeight: 52, maxHeight: 160, border: 0, resize: "none", background: "transparent", padding: "10px 12px 4px", font: "400 15px/22px var(--font-sans)", color: "var(--text-primary)", outline: "none", overflowY: "auto" }}
+                      placeholder={notaMode ? "Escreva uma nota para a equipe" : "Escreva uma resposta. Digite / para respostas rápidas"}
                       value={draft}
-                      onChange={(e) => { setDraft(e.target.value); setSlashOff(false); }}
+                      onChange={(e) => {
+                        setDraft(e.target.value);
+                        setSlashOff(false);
+                      }}
                       onKeyDown={(e) => {
                         if (slashMatches.length > 0 && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
                           e.preventDefault();
@@ -1401,34 +1504,102 @@ export default function InboxPage() {
                           setSlashOff(true);
                           return;
                         }
-                        if (e.key === "Escape") { setSlashOff(true); return; }
+                        if (e.key === "Escape") {
+                          setSlashOff(true);
+                          return;
+                        }
                         // Enter envia; Shift+Enter quebra linha (padrão WhatsApp).
-                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          enviar();
+                        }
                       }}
                     />
+                    <div className="row center" style={{ gap: 2, padding: "4px 6px 6px" }}>
+                      {!notaMode && (
+                        <button className="btn btn-ghost btn-icon btn-sm" aria-label="Anexar arquivo" title="Anexar arquivo" onClick={() => setMidiaOpen(true)}>
+                          <Icon name="attach" size={16} />
+                        </button>
+                      )}
+                      {!notaMode && (
+                        <button className="btn btn-ghost btn-icon btn-sm" aria-label="Gravar áudio" title="Gravar áudio" onClick={iniciarGravacao}>
+                          <Icon name="mic" size={16} />
+                        </button>
+                      )}
+                      {!notaMode && (
+                        <Dropdown
+                          up
+                          align="left"
+                          trigger={
+                            <button className="btn btn-ghost btn-sm">
+                              <Icon name="zap" size={14} />
+                              Respostas rápidas
+                              <span className="kbd">/</span>
+                            </button>
+                          }
+                        >
+                          <div className="dropdown-label">Respostas rápidas</div>
+                          <div style={{ maxHeight: 260, overflowY: "auto", width: 280 }}>
+                            {quickReplies.length === 0 && <div className="dropdown-item muted">Nenhuma resposta cadastrada.</div>}
+                            {quickReplies.map((qr) => (
+                              <div key={qr.id} className="dropdown-item" style={{ alignItems: "flex-start", padding: "8px 10px" }} onClick={() => setDraft((d) => (d ? d + " " : "") + qr.texto)}>
+                                <div className="col" style={{ gap: 1, minWidth: 0 }}>
+                                  <span className="row center" style={{ gap: 6 }}>
+                                    {qr.atalho && <span className="mono strong" style={{ fontSize: 12 }}>{qr.atalho}</span>}
+                                    {qr.minha && <span className="badge badge-neutral" style={{ height: 18, fontSize: 11 }}>minha</span>}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 240 }}>{qr.texto}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="dropdown-sep" />
+                          <div className="dropdown-item" onClick={() => setQrOpen(true)}>
+                            <Icon name="settings" size={16} /> Gerenciar minhas respostas
+                          </div>
+                        </Dropdown>
+                      )}
+                      {!notaMode && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setNovaPhone(active.contact_phone); setNovaOpen(true); }}>
+                          <Icon name="template" size={14} />
+                          Template
+                        </button>
+                      )}
+                      <span className="grow" />
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginRight: 8, whiteSpace: "nowrap" }}>Enter envia · Shift+Enter quebra linha</span>
+                      <Button variant="primary" size="sm" icon={notaMode ? "note" : "send"} disabled={sending || !draft.trim()} onClick={() => enviar()}>
+                        {notaMode ? "Salvar nota" : "Enviar"}
+                      </Button>
+                    </div>
                   </div>
-                  {!notaMode && !draft.trim() && (
-                    <button className="btn btn-ghost btn-icon" style={{ height: 42, width: 42 }} title="Gravar áudio" onClick={iniciarGravacao}>
-                      <Icon name="mic" size={18} />
-                    </button>
-                  )}
-                  <Button variant={notaMode ? "secondary" : "wa"} style={{ height: 42, width: 42, padding: 0 }} aria-disabled={sending} onClick={() => enviar()}>
-                    <Icon name={notaMode ? "edit" : "send"} size={18} />
-                  </Button>
-                </div>
                 )}
-                <div className="row center" style={{ gap: 6, marginTop: 8, fontSize: 11, color: notaMode ? "var(--st-pending)" : "var(--text-faint)" }}>
-                  <Icon name="info" size={12} />
-                  {notaMode ? "Modo nota: salva só pra equipe, não envia ao cidadão." : "Resposta livre só dentro da janela de 24h (regra da Meta)."}
-                </div>
               </>
             )}
           </div>
-        </div>
+        </section>
       ) : (
-        <div className="split-detail">
+        <div className="split-detail" style={{ justifyContent: "center" }}>
           <EmptyState icon="message" title="Selecione uma conversa" sub="Escolha um contato na lista para ver o histórico e responder." />
         </div>
+      )}
+
+      {active && painel && largo && (
+        <aside aria-label="Dados do contato" className="scroll-y" style={{ width: 300, flex: "none", background: "var(--bg-surface)", borderLeft: "1px solid var(--border)" }}>
+          {painelConteudo}
+        </aside>
+      )}
+    </div>
+
+      {active && !largo && (
+        <Drawer open={painel} onClose={() => setPainel(false)} width={320}>
+          <div className="row between center" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+            <span className="card-title">Dados do contato</span>
+            <button className="btn btn-ghost btn-icon btn-sm" aria-label="Fechar painel" onClick={() => setPainel(false)}>
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+          <div className="scroll-y grow">{painelConteudo}</div>
+        </Drawer>
       )}
 
       <MinhasRespostasModal
@@ -1440,7 +1611,11 @@ export default function InboxPage() {
 
       <NovaConversaModal
         open={novaOpen}
-        onClose={() => setNovaOpen(false)}
+        presetPhone={novaPhone}
+        onClose={() => {
+          setNovaOpen(false);
+          setNovaPhone("");
+        }}
         onSent={async () => {
           const data = await listConversations();
           setConvs(data);
@@ -1513,7 +1688,7 @@ export default function InboxPage() {
                       {s.status === "resolvida" ? "Resolvida" : "Aberta"}
                     </span>
                   </div>
-                  <div className="row center" style={{ gap: 8, fontSize: 11.5, color: "var(--text-tertiary)" }}>
+                  <div className="row center" style={{ gap: 8, fontSize: 12, color: "var(--text-tertiary)" }}>
                     {s.setor && (
                       <span className="tag">
                         <span className="tag-dot" style={{ background: SETOR_COR[s.setor] || "var(--text-faint)" }} /> {s.setor}
@@ -1531,7 +1706,7 @@ export default function InboxPage() {
             {sessSel.dados && Object.keys(sessSel.dados).length > 0 && (
               <div className="card card-pad" style={{ marginBottom: 12 }}>
                 {Object.entries(sessSel.dados).map(([k, v]) => (
-                  <div key={k} className="row between" style={{ fontSize: 12.5, padding: "2px 0" }}>
+                  <div key={k} className="row between" style={{ fontSize: 13, padding: "2px 0" }}>
                     <span className="muted">{k}</span>
                     <span className="strong">{v}</span>
                   </div>

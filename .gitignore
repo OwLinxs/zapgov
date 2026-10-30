@@ -6,6 +6,7 @@
 !/docker-compose.prod.yml
 !/docker-compose.dev.yml
 !/Makefile
+!/README.md
 !/.gitignore
 !/LICENSE.md
 !/.github/
@@ -14,6 +15,9 @@
 backend/.env
 backend/.env.dev
 *.env.local
+
+# Documentos internos do projeto — manter apenas no workspace local.
+/docs/
 
 # Build / deps / backups
 node_modules/

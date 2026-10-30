@@ -57,3 +57,24 @@ func TestWebhookAcknowledgesOnlyPersistedEvents(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookVerifyTokenFromPanel(t *testing.T) {
+	h := NewHandler(nil, nil, "")
+	h.SetVerifyTokenResolver(func(_ context.Context, token string) bool { return token == "saved-token" })
+	app := fiber.New()
+	h.Register(app)
+	for _, tc := range []struct {
+		token  string
+		status int
+	}{{"saved-token", 200}, {"wrong", 403}} {
+		req := httptest.NewRequest("GET", "/webhook?hub.mode=subscribe&hub.verify_token="+tc.token+"&hub.challenge=ok", nil)
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != tc.status {
+			t.Fatalf("token %q: got %d, want %d", tc.token, res.StatusCode, tc.status)
+		}
+	}
+}

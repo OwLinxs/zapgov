@@ -172,6 +172,15 @@ func main() {
 		return tid
 	})
 	whHandler.SetProviderResolver(provResolver)
+	whHandler.SetVerifyTokenResolver(func(ctx context.Context, token string) bool {
+		if tenantsRepo.HasVerifyToken(ctx, token) {
+			return true
+		}
+		// Compatibilidade: o token do ambiente só vale enquanto o tenant 1
+		// não tiver um Verify Token cadastrado no painel.
+		cr, err := tenantsRepo.Creds(ctx, 1)
+		return err == nil && cr.WebhookVerifyToken == "" && cfg.WebhookVerifyToken != "" && token == cfg.WebhookVerifyToken
+	})
 	webhookInbox := webhook.NewInbox(pool)
 	whHandler.Accept = webhookInbox.Accept
 	whHandler.Register(app) // Meta chama direto
@@ -458,7 +467,7 @@ func main() {
 		WABAID:        cfg.WhatsAppWABAID,
 		APIVersion:    cfg.WhatsAppAPIVersion,
 		Connected:     cfg.WhatsAppToken != "",
-	}).Register(api, opsOnly)
+	}, tenantsRepo).Register(api, opsOnly)
 
 	// Auto-resposta de ausência: avalia se agora é feriado/fim de semana (no fuso
 	// da org) e devolve a mensagem configurada.

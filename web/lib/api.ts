@@ -519,6 +519,10 @@ export interface SettingsMeta {
   waba_id: string;
   api_version: string;
   connected: boolean;
+  token_configured: boolean;
+  app_secret_configured: boolean;
+  webhook_verify_token_configured: boolean;
+  source: string;
 }
 export interface SettingsBilling {
   plano: string;
@@ -680,6 +684,7 @@ export const listReminders = async () =>
   (await get<{ reminders: ApiReminder[] }>("/reminders")).reminders ?? [];
 export const cancelReminder = (id: number) => del(`/reminders/${id}`);
 export const getMeta = () => get<SettingsMeta>("/settings/meta");
+export const saveMeta = (m: TenantMeta) => post("/settings/meta", m, "PUT");
 export const getBilling = () => get<SettingsBilling>("/settings/billing");
 export const getApiKey = () => get<{ api_key: string }>("/settings/apikey");
 export const regenApiKey = () => post<{ api_key: string }>("/settings/apikey/regen", {});

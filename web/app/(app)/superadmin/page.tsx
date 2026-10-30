@@ -36,7 +36,7 @@ export default function SuperAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try { setList(await listTenants()); }
-    catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setLoading(false); }
   }, [toast]);
   useEffect(() => { load(); }, [load]);
@@ -45,7 +45,7 @@ export default function SuperAdminPage() {
     try {
       await (t.ativo ? suspendTenant(t.id) : activateTenant(t.id));
       load();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
 
   const rows = list.filter((t) =>
@@ -165,7 +165,7 @@ function NovoTenantModal({ open, onClose, onCreated }: { open: boolean; onClose:
       toast({ type: "success", title: "Órgão criado", message: f.subdominio + ".zapgov.com.br" });
       onCreated();
       onClose();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
 
@@ -212,7 +212,7 @@ function ModulosModal({ tenant, onClose, onSaved }: { tenant: ApiTenant | null; 
       await updateTenantModulos(tenant.id, sel);
       toast({ type: "success", title: "Módulos atualizados", message: "O atendente precisa sair e entrar de novo para ver a mudança." });
       onSaved(); onClose();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
 
@@ -226,8 +226,8 @@ function ModulosModal({ tenant, onClose, onSaved }: { tenant: ApiTenant | null; 
         {MODULOS.map((mod) => (
           <label key={mod.key} className="card card-pad row between center" style={{ gap: 12, cursor: "pointer" }}>
             <div className="col" style={{ gap: 2 }}>
-              <span className="strong" style={{ fontSize: 13.5 }}>{mod.label}</span>
-              <span className="faint" style={{ fontSize: 11.5 }}>{mod.hint}</span>
+              <span className="strong" style={{ fontSize: 14 }}>{mod.label}</span>
+              <span className="faint" style={{ fontSize: 12 }}>{mod.hint}</span>
             </div>
             <input
               type="checkbox"
@@ -259,7 +259,7 @@ function PlanoModal({ tenant, onClose, onSaved }: { tenant: ApiTenant | null; on
       await updateTenantPlano(tenant.id, plano, limite);
       toast({ type: "success", title: "Plano atualizado" });
       onSaved(); onClose();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
 
@@ -298,7 +298,7 @@ function MetaModal({ tenant, onClose, onSaved }: { tenant: ApiTenant | null; onC
       await setTenantMeta(tenant.id, m);
       toast({ type: "success", title: "Credenciais salvas", message: "A API deste órgão foi atualizada." });
       onSaved(); onClose();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
 
@@ -310,7 +310,7 @@ function MetaModal({ tenant, onClose, onSaved }: { tenant: ApiTenant | null; onC
       </div>
       <div className="modal-body col" style={{ gap: 12 }}>
         {tenant?.id === 1 && (
-          <div className="card card-pad" style={{ background: "var(--st-pending-soft)", fontSize: 12.5, color: "var(--text-secondary)" }}>
+          <div className="card card-pad" style={{ background: "var(--st-pending-soft)", fontSize: 13, color: "var(--text-secondary)" }}>
             Este é o tenant da plataforma — por padrão usa as credenciais do <b>.env</b>. Preencher aqui sobrescreve.
           </div>
         )}

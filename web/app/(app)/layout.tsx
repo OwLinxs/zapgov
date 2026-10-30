@@ -1,5 +1,4 @@
 import { Sidebar } from "@/components/shell/Sidebar";
-import { Tweaks } from "@/components/shell/Tweaks";
 import { AuthProvider, AuthGate } from "@/lib/auth";
 import { NotificationsProvider } from "@/lib/notifications";
 
@@ -12,7 +11,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="app-shell">
             <Sidebar />
             <main className="main">{children}</main>
-            <Tweaks />
           </div>
         </NotificationsProvider>
       </AuthGate>

@@ -9,7 +9,7 @@ export const NODE_META: Record<
   string,
   { label: string; icon: IconName; color: string; defaultData: Record<string, unknown> }
 > = {
-  start: { label: "Início", icon: "play", color: "var(--wa)", defaultData: {} },
+  start: { label: "Início", icon: "play", color: "var(--wa-deep)", defaultData: {} },
   message: { label: "Mensagem", icon: "message", color: "var(--brand-text)", defaultData: { text: "Sua mensagem…" } },
   menu: {
     label: "Menu",
@@ -42,7 +42,7 @@ function Shell({ type, selected, children }: { type: string; selected: boolean; 
         <span className="kpi-ico" style={{ width: 22, height: 22, background: "color-mix(in oklch, " + m.color + " 18%, transparent)", color: m.color }}>
           <Icon name={m.icon} size={13} />
         </span>
-        <span className="strong" style={{ fontSize: 12.5 }}>
+        <span className="strong" style={{ fontSize: 13 }}>
           {m.label}
         </span>
       </div>
@@ -66,7 +66,7 @@ function SingleOut({ type, data, selected }: NodeProps & { type: string }) {
         {type === "input" && (
           <>
             {trunc((data as any).prompt)}
-            <div className="mono faint" style={{ fontSize: 10.5, marginTop: 3 }}>
+            <div className="mono faint" style={{ fontSize: 11, marginTop: 3 }}>
               → {"{{"}{(data as any).var || "var"}{"}}"}
             </div>
           </>
@@ -92,14 +92,14 @@ function MenuNode({ data, selected }: NodeProps) {
       <Shell type="menu" selected={selected}>
         <div style={{ marginBottom: 6 }}>{trunc((data as any).text, 50)}</div>
         {captura && (
-          <div className="mono faint" style={{ fontSize: 10, marginBottom: 4 }}>
+          <div className="mono faint" style={{ fontSize: 11, marginBottom: 4 }}>
             → salva em {"{{"}{(data as any).var}{"}}"}
           </div>
         )}
         <div className="col" style={{ gap: 4 }}>
           {opts.map((o) => (
             <div key={o.key} className="row center between" style={{ gap: 8, position: "relative", padding: "3px 0" }}>
-              <span style={{ fontSize: 11.5 }}>
+              <span style={{ fontSize: 12 }}>
                 <span className="mono strong">{o.key}</span> · {o.label}
               </span>
               {!captura && (
@@ -125,10 +125,10 @@ function ConditionNode({ data, selected }: NodeProps) {
     <>
       <Handle type="target" position={Position.Top} style={dotStyle} />
       <Shell type="condition" selected={selected}>
-        <span className="mono" style={{ fontSize: 11.5 }}>
+        <span className="mono" style={{ fontSize: 12 }}>
           {"{{"}{(data as any).var}{"}}"} {(data as any).op === "contains" ? "contém" : "="} &quot;{(data as any).value}&quot;
         </span>
-        <div className="row between" style={{ marginTop: 6, fontSize: 10.5 }}>
+        <div className="row between" style={{ marginTop: 6, fontSize: 11 }}>
           <span style={{ color: "var(--st-read)" }}>verdadeiro</span>
           <span style={{ color: "var(--st-failed)" }}>falso</span>
         </div>

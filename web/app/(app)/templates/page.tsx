@@ -279,14 +279,14 @@ function GruposModal({ open, groups, onClose, onChanged }: { open: boolean; grou
       await createTemplateGroup(nome.trim());
       setNome("");
       onChanged();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
     finally { setSaving(false); }
   }
   async function remover(id: number) {
     try {
       await deleteTemplateGroup(id);
       onChanged();
-    } catch (e) { toast({ type: "error", title: "Erro", message: (e as Error).message }); }
+    } catch (e) { toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message }); }
   }
 
   return (
@@ -301,7 +301,7 @@ function GruposModal({ open, groups, onClose, onChanged }: { open: boolean; grou
           <Button variant="primary" icon="plus" aria-disabled={saving || !nome.trim()} onClick={criar}>Criar</Button>
         </div>
         {groups.length === 0 ? (
-          <span className="muted" style={{ fontSize: 12.5 }}>Nenhum grupo ainda.</span>
+          <span className="muted" style={{ fontSize: 13 }}>Nenhum grupo ainda.</span>
         ) : (
           groups.map((g) => (
             <div key={g.id} className="row center between" style={{ padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8 }}>
@@ -359,7 +359,7 @@ export default function TemplatesPage() {
     try {
       await setTemplateGroup(t.name, groupId);
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
       load();
     }
   }
@@ -376,7 +376,7 @@ export default function TemplatesPage() {
     try {
       await setTemplateSetores(t.name, next);
     } catch (e) {
-      toast({ type: "error", title: "Erro", message: (e as Error).message });
+      toast({ type: "error", title: "Não foi possível concluir", message: (e as Error).message });
       load();
     }
   }
@@ -449,7 +449,7 @@ export default function TemplatesPage() {
 
           {erro ? (
             <div className="card">
-              <EmptyState icon="alertCircle" title="Não foi possível sincronizar" sub={erro} action={<Button size="sm" onClick={load}>Tentar de novo</Button>} />
+              <EmptyState error title="Não foi possível sincronizar" sub={erro} action={<Button size="sm" onClick={load}>Tentar novamente</Button>} />
             </div>
           ) : loading ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
@@ -471,7 +471,7 @@ export default function TemplatesPage() {
               {nomeSecao && (
                 <div className="row center" style={{ gap: 8 }}>
                   <Icon name="layers" size={15} style={{ color: "var(--brand-text)" }} />
-                  <span className="strong" style={{ fontSize: 13.5 }}>{nomeSecao}</span>
+                  <span className="strong" style={{ fontSize: 14 }}>{nomeSecao}</span>
                   <span className="badge badge-neutral">{items.length}</span>
                 </div>
               )}
@@ -504,7 +504,7 @@ export default function TemplatesPage() {
                       <WaBubble text={t.body || "—"} dir="out" highlight status="lido" time="09:14" buttons={t.buttons?.length ? t.buttons : undefined} />
                     </div>
                     {t.status === "rejeitado" && t.motivo && (
-                      <div className="row" style={{ gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--st-failed-soft)", fontSize: 11.5, color: "var(--st-failed)" }}>
+                      <div className="row" style={{ gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--st-failed-soft)", fontSize: 12, color: "var(--st-failed)" }}>
                         <Icon name="alertCircle" size={14} style={{ flex: "none", marginTop: 1 }} />
                         <span>
                           <strong>Motivo: </strong>
@@ -517,7 +517,7 @@ export default function TemplatesPage() {
                   <div className="row center" style={{ gap: 6, flexWrap: "wrap", padding: "10px 16px 0" }}>
                     <span className="field-label" style={{ fontSize: 11 }}>Departamentos:</span>
                     {(t.setores || []).length === 0 ? (
-                      <span className="muted" style={{ fontSize: 11.5 }}>nenhum (só admin/supervisor)</span>
+                      <span className="muted" style={{ fontSize: 12 }}>nenhum (só admin/supervisor)</span>
                     ) : (
                       (t.setores || []).map((s) => (
                         <span key={s} className="tag" style={{ fontSize: 11 }}>

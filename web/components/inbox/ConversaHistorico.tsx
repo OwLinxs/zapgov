@@ -56,7 +56,7 @@ export function ConversaHistorico({ convId, onClose }: { convId: number; onClose
 
           <div className="wa-canvas scroll-y" style={{ maxHeight: "calc(100vh - 180px)", borderRadius: 8, padding: 10 }}>
             {msgs.length === 0 ? (
-              <div className="muted" style={{ textAlign: "center", padding: 18, fontSize: 12.5 }}>Sem mensagens nesta janela.</div>
+              <div className="muted" style={{ textAlign: "center", padding: 18, fontSize: 13 }}>Sem mensagens nesta janela.</div>
             ) : (
               msgs.map((m) => <MessageItem key={m.id} m={m} />)
             )}

@@ -60,7 +60,7 @@ export default function RelatoriosPage() {
                   <Icon name={r.icon} size={19} />
                 </span>
                 <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
-                  <span className="strong" style={{ fontSize: 13.5 }}>{r.titulo}</span>
+                  <span className="strong" style={{ fontSize: 14 }}>{r.titulo}</span>
                   <span className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>{r.sub}</span>
                 </div>
                 <Button variant="secondary" size="sm" icon="download" aria-disabled={baixando === r.tipo} onClick={() => baixar(r.tipo)}>
