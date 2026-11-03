@@ -353,7 +353,10 @@ func main() {
 	if cfg.GatewayEnabled() {
 		gwRepo := gateway.NewRepository(pool)
 		gwClient := gateway.NewClient(cfg.SigeBaseURL, cfg.SigeAPIKey, cfg.SigeHMACSecret)
-		gwSvc := gateway.NewService(gwRepo, gwClient, svc)
+		gwOutbox := gateway.NewOutbox(pool)
+		gwMidia := gateway.NovoAssinador(cfg.SigeHMACSecret, cfg.GatewayPublicURL, time.Duration(cfg.GatewayMediaTTLMin)*time.Minute)
+		gwSvc := gateway.NewService(gwRepo, gwClient, gwOutbox, svc, time.Duration(cfg.GatewayRelayTTLH)*time.Hour, gwMidia)
+		go gwOutbox.Run(ctx, gwSvc.Entregar, gwSvc.AvisarFalha) // repasse ao SIGE com retry
 		gwTenant := cfg.GatewayTenantID
 		svc.Gateway = func(ctx context.Context, in messaging.IncomingMessage) bool {
 			if tenantctx.From(ctx) != gwTenant {
@@ -362,7 +365,11 @@ func main() {
 			gwSvc.HandleInbound(ctx, in)
 			return true
 		}
-		gateway.NewHandler(gwRepo, svc, gwTenant, cfg.GatewayInboundAPIKey).Register(app)
+		gateway.NewHandler(gwRepo, svc, gwTenant, cfg.GatewayInboundAPIKey, gwMidia,
+			gateway.NovoBaixador(cfg.SigeBaseURL, cfg.SigeAPIKey)).Register(app)
+		if cfg.GatewayPublicURL == "" {
+			slog.Warn("gateway: GATEWAY_PUBLIC_URL vazia; mídias recebidas vão ao SIGE sem midia_url")
+		}
 		slog.Info("gateway SIGE ligado", "tenant", gwTenant, "sige", cfg.SigeBaseURL)
 	}
 

@@ -130,12 +130,21 @@ func (c *Client) ListarChamados(ctx context.Context, telefone string, limite int
 	return out.Chamados, nil
 }
 
+// Entregar envia ao SIGE um evento já serializado (usado pela fila Outbox).
+func (c *Client) Entregar(ctx context.Context, raw []byte) error {
+	return c.postRaw(ctx, raw, nil)
+}
+
 // postEvento faz o POST assinado em /integracao/zapgov/eventos.
 func (c *Client) postEvento(ctx context.Context, body map[string]any, out any) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
+	return c.postRaw(ctx, raw, out)
+}
+
+func (c *Client) postRaw(ctx context.Context, raw []byte, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/integracao/zapgov/eventos", bytes.NewReader(raw))
 	if err != nil {
 		return err

@@ -25,9 +25,10 @@ const (
 
 // Session é o estado da conversa no gateway.
 type Session struct {
-	Step       string
-	TicketID   int64
-	Referencia string
+	Step         string
+	TicketID     int64
+	Referencia   string
+	AtualizadoEm time.Time // último movimento (save, mensagem da pessoa ou do técnico)
 }
 
 type Repository struct{ pool *pgxpool.Pool }
@@ -39,8 +40,8 @@ func (r *Repository) Load(ctx context.Context, phone string) Session {
 	var s Session
 	var tid *int64
 	err := r.pool.QueryRow(ctx,
-		`SELECT step, ticket_id, referencia FROM gateway_sessions WHERE tenant_id = $2 AND telefone = $1`,
-		messaging.CanonPhone(phone), tenantctx.From(ctx)).Scan(&s.Step, &tid, &s.Referencia)
+		`SELECT step, ticket_id, referencia, atualizado_em FROM gateway_sessions WHERE tenant_id = $2 AND telefone = $1`,
+		messaging.CanonPhone(phone), tenantctx.From(ctx)).Scan(&s.Step, &tid, &s.Referencia, &s.AtualizadoEm)
 	if errors.Is(err, pgx.ErrNoRows) || err != nil {
 		return Session{Step: StepMenu}
 	}
@@ -72,6 +73,14 @@ func (r *Repository) Save(ctx context.Context, phone string, s Session) error {
 func (r *Repository) Clear(ctx context.Context, phone string) error {
 	_, err := r.pool.Exec(ctx,
 		`DELETE FROM gateway_sessions WHERE tenant_id = $2 AND telefone = $1`,
+		messaging.CanonPhone(phone), tenantctx.From(ctx))
+	return err
+}
+
+// Touch marca movimento no relay (adia a expiração por inatividade).
+func (r *Repository) Touch(ctx context.Context, phone string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE gateway_sessions SET atualizado_em = now() WHERE tenant_id = $2 AND telefone = $1 AND step = 'relay'`,
 		messaging.CanonPhone(phone), tenantctx.From(ctx))
 	return err
 }

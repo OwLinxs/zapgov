@@ -6,8 +6,10 @@ O ZapGov é um **gateway de WhatsApp**: cuida de enviar/receber, mídia, janela 
 conversa com a pessoa dentro da tela do chamado. As mensagens vão e voltam por API.
 
 > Status: **Fase 1 implementada** (texto ponta a ponta) no pacote
-> `backend/internal/gateway`. O lado SIGE já foi implementado segundo este
-> contrato. Fases 2–4 (retry/status, mídia, botão de template) pendentes.
+> `backend/internal/gateway`, mais a **fila com retry** do `mensagem.recebida`
+> (Fase 2, parte) e a **saída do relay** (palavra-chave + inatividade). O lado
+> SIGE já foi implementado segundo este contrato. **Mídia (Fase 3)** implementada
+> nos dois sentidos. Pendente: `mensagem.status`.
 
 ## Visão geral
 
@@ -41,7 +43,18 @@ menu + "Retomar"                  → GET /v1/chamados
       lista com itens             → listando
 listando + escolhe #N             → relay(N)  [+ confirmação; reabre se fechado]
 relay + (SIGE POST /v1/relay/encerrar) → menu   (volta ao início)
+relay + "sair" | "#sair" | "menu"      → menu   (a pessoa sai; o chamado segue no SIGE)
+relay parado > GATEWAY_RELAY_TTL_H     → menu   (na próxima mensagem da pessoa)
 ```
+
+**Saída do relay.** Sem isso a pessoa ficaria presa se o SIGE nunca chamasse
+`/v1/relay/encerrar`. A palavra-chave só vale como mensagem inteira ("vou sair
+da sala" continua no relay). "Movimento" = mensagem da pessoa repassada ou
+resposta do técnico via `POST /v1/mensagens`; ambas renovam `atualizado_em`. A
+mensagem que encontra o relay expirado **não** é repassada: a pessoa recebe o
+menu com a orientação de usar *Retomar chamado*. O SIGE não é notificado da
+saída (não há evento no contrato; a próxima `mensagem.recebida` após um
+*Retomar* reabre o vínculo normalmente).
 
 Reabertura: chamado fechado é listável e escolhível. A **primeira `mensagem.recebida`**
 num chamado fechado faz o SIGE reabrir automaticamente (comportamento já implementado
@@ -58,8 +71,13 @@ GATEWAY_INBOUND_API_KEY=<segredo>   # SIGE manda no X-API-Key ao chamar /v1/*  (
 SIGE_BASE_URL=https://sige.exemplo.gov.br   # ZapGov chama aqui               (= ZAPGOV_BASE_URL aponta pra cá; este aponta pro SIGE)
 SIGE_API_KEY=<segredo>              # X-API-Key que o ZapGov envia ao SIGE     (= INTEGRACAO_API_KEY no SIGE)
 SIGE_HMAC_SECRET=<segredo>          # assina os webhooks ZapGov→SIGE           (= INTEGRACAO_HMAC_SECRET no SIGE)
+GATEWAY_RELAY_TTL_H=72              # horas sem movimento até o relay expirar (0 = nunca)
+GATEWAY_PUBLIC_URL=https://api.zapgov.exemplo.gov.br  # URL pública desta API, alcançável pelo SIGE (monta midia_url)
 GATEWAY_MEDIA_TTL_MIN=30            # validade (min) da URL assinada de mídia recebida
 ```
+
+Sem `GATEWAY_PUBLIC_URL` o gateway funciona, mas mídias recebidas chegam ao SIGE
+só com `tipo`/`texto`/`midia_mime` e `midia_url: null` (log de aviso na subida).
 
 > Decisão registrada: config por **.env** (um órgão). Se outro órgão precisar,
 > migrar para config por tenant no banco (criptografada, padrão de `tenants/secrets.go`).
@@ -75,9 +93,10 @@ Envia uma mensagem no WhatsApp da pessoa.
 ```jsonc
 // texto
 { "telefone": "5546999990000", "tipo": "texto", "texto": "Olá, sou o técnico..." }
-// mídia (Fase 3)
-{ "telefone": "5546999990000", "tipo": "midia",
-  "midia_url": "https://sige.../arquivo.pdf", "midia_mime": "application/pdf" }
+// mídia: midia_url TEM de estar no mesmo esquema+host de SIGE_BASE_URL
+{ "telefone": "5546999990000", "tipo": "midia", "texto": "legenda (opcional)",
+  "midia_url": "https://sige.../arquivo.pdf", "midia_mime": "application/pdf",
+  "midia_nome": "laudo.pdf" }   // midia_mime e midia_nome opcionais
 // template (janela fechada / retomada)
 { "telefone": "5546999990000", "tipo": "template",
   "template": "retomada_atendimento", "params": ["João", "OS-2026-0123"] }
@@ -89,6 +108,11 @@ Respostas:
 - `422 { "erro": "janela_fechada" }` — texto/mídia fora da janela de 24h. O SIGE
   deve reenviar como `template`.
 - `422 { "erro": "dados_invalidos" }` — payload inválido.
+- `422 { "erro": "opt_out" }` — a pessoa pediu para não receber mensagens.
+- `422 { "erro": "midia_invalida", "detalhe": "..." }` — `midia_url` fora do SIGE
+  ou arquivo acima do limite da Meta (imagem 5 MB, áudio/vídeo 16 MB, documento 100 MB).
+- `502 { "erro": "midia_indisponivel" }` — não conseguiu baixar do SIGE (pode tentar de novo).
+- `502 { "erro": "envio_falhou" }` — a Meta recusou o envio.
 
 ### POST /v1/relay/encerrar
 Tira o telefone do modo relay (chamado encerrado no SIGE). Próxima mensagem da
@@ -99,9 +123,12 @@ pessoa volta ao menu do bot.
 ```
 Resposta: `200 { "ok": true }` (idempotente; ok mesmo se já não estava em relay).
 
-### GET /v1/midia/{token}  (Fase 3)
-Serve a mídia recebida da pessoa, atrás de token assinado e expirável
-(`GATEWAY_MEDIA_TTL_MIN`). É a URL colocada em `mensagem.recebida.midia_url`.
+### GET /v1/midia/{token}
+Serve a mídia recebida da pessoa. É a URL colocada em `mensagem.recebida.midia_url`.
+**Não** exige `X-API-Key`: a autorização é o próprio token (HMAC, expira em
+`GATEWAY_MEDIA_TTL_MIN`). `404` para token inválido/expirado. O SIGE deve
+**baixar e guardar** o arquivo ao receber o evento — depois do prazo a URL morre
+(e a Meta apaga a mídia em ~30 dias).
 
 ## Webhooks que o ZapGov ENVIA (o SIGE recebe)
 
@@ -110,8 +137,25 @@ Cabeçalhos:
 - `X-API-Key: <SIGE_API_KEY>`
 - `X-Signature: sha256=<hex(HMAC_SHA256(SIGE_HMAC_SECRET, corpo_cru))>`
 
-Entrega confiável: reusar o padrão de `webhook_inbox` (fila + retry com backoff).
-O SIGE faz dedup por `wa_message_id`.
+Entrega confiável do `mensagem.recebida`: o inbound grava em `gateway_outbox`
+(migration 0048) e um loop no processo da API entrega a cada 1s:
+
+- **Ordem por telefone**: só o evento pendente mais antigo de cada telefone é
+  elegível; se ele falha, os seguintes esperam.
+- **Retry**: backoff `30s · 2^n` (teto 64 min), até 10 tentativas (~4h). Depois
+  marca `failed_at` e desiste.
+- **Aviso à pessoa**: na 1ª falha (no máximo 1 aviso/hora por telefone) recebe
+  "sistema de chamados instável, será entregue, não precisa reenviar"; na
+  desistência, "não conseguimos entregar, reenvie mais tarde". Se nem gravar na
+  fila der (banco fora), pede para reenviar na hora.
+- **Dedup**: `UNIQUE (tenant_id, wa_message_id)` na fila; o SIGE também deduplica
+  por `wa_message_id`.
+- Eventos entregues/desistidos há mais de 30 dias são apagados.
+- Diagnóstico: `SELECT telefone, attempts, last_error, next_attempt_at FROM
+  gateway_outbox WHERE sent_at IS NULL AND failed_at IS NULL;`
+
+`chamado.abrir` continua síncrono (precisa do `ticket_id` na hora). Em falha a
+pessoa é orientada a reenviar e a `referencia` é reutilizada (idempotente).
 
 ### evento: chamado.abrir
 ```json
@@ -196,13 +240,21 @@ CREATE TABLE gateway_sessions (
 );
 ```
 
-## Mídia (Fase 3)
+## Mídia (Fase 3) ✅
 
-- **Recebida** (pessoa → técnico): o ZapGov já baixa a mídia da Meta no inbox.
-  O gateway gera uma **URL assinada e expirável** (`GET /v1/midia/{token}`) e a
-  coloca em `mensagem.recebida.midia_url`. O SIGE baixa/rearmazena se quiser manter.
-- **Enviada** (técnico → pessoa): `POST /v1/mensagens tipo=midia` com `midia_url`
-  do lado do SIGE → o ZapGov baixa dessa URL, sobe pra Meta e envia.
+- **Recebida** (pessoa → técnico): a fila guarda só a referência (media id da
+  Meta). A URL assinada é gerada **na hora da entrega** ao SIGE, então não vence
+  durante os retries. O token leva tenant, media id, mime, nome e expiração,
+  assinado com chave derivada de `SIGE_HMAC_SECRET`. Ao servir, o ZapGov busca a
+  mídia na Meta e devolve com `nosniff` + CSP `sandbox`; tipos fora de
+  imagem/áudio/vídeo/PDF vão como `application/octet-stream` + `attachment`
+  (um `.html` enviado pela pessoa nunca é renderizado no domínio do ZapGov).
+- **Enviada** (técnico → pessoa): `POST /v1/mensagens tipo=midia` → o ZapGov
+  baixa a `midia_url` (só do host de `SIGE_BASE_URL`, mandando `X-API-Key:
+  SIGE_API_KEY`, sem seguir redirect, timeout 60s, limite por tipo), sobe na Meta
+  e envia por media id. A URL do SIGE não precisa ser pública. Tipo do envio sai
+  do mime (`midia_mime` > `Content-Type` > detecção); nome sai de `midia_nome` >
+  `Content-Disposition` > fim do caminho da URL.
 
 ## Janela de 24h
 
@@ -234,8 +286,9 @@ ser ignorados pelo motor (caem no `default`).
 1. **Texto ponta a ponta**: `POST /v1/mensagens` (texto) + `GATEWAY_INBOUND_API_KEY`;
    estado de relay; bot menu Abrir/Retomar; `GET /v1/chamados`; webhooks
    `chamado.abrir` e `mensagem.recebida` (texto); confirmação. → chat texto funciona.
-2. **Confiabilidade**: fila/retry dos webhooks (padrão `webhook_inbox`); `mensagem.status`.
-3. **Mídia**: recebida (URL assinada) + enviada (upload à Meta).
+2. **Confiabilidade**: fila/retry do `mensagem.recebida` ✅ (`gateway_outbox`);
+   saída do relay ✅; `mensagem.status` — pendente.
+3. **Mídia** ✅: recebida (URL assinada) + enviada (download do SIGE + upload à Meta).
 4. **Janela/template**: `422 janela_fechada` + `POST /v1/relay/encerrar`.
 
 ## Interop a confirmar com o SIGE (evita bug de integração)
@@ -245,4 +298,8 @@ ser ignorados pelo motor (caem no `default`).
 3. **Nomes de template** de retomada e a ordem dos `params`.
 4. **`GET /v1/chamados`**: inclui fechados (para reabrir) — confirmado. Limite/paginação se > 10.
 5. **Idempotência de `chamado.abrir`**: mesma `referencia` devolve o mesmo `ticket_id` — confirmado.
+6. **Arquivos do SIGE no mesmo host de `SIGE_BASE_URL`**: se o SIGE guardar anexos
+   em outro domínio (S3/CDN), o envio de mídia dá `422 midia_invalida` — aí é
+   preciso liberar esse host explicitamente.
+7. **SIGE baixa a mídia recebida na hora** (a `midia_url` expira em `GATEWAY_MEDIA_TTL_MIN`).
 ```

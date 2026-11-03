@@ -44,6 +44,9 @@ type Config struct {
 	SigeBaseURL          string // base do SIGE (ZapGov chama /v1/chamados e /integracao/zapgov/eventos)
 	SigeAPIKey           string // X-API-Key que o ZapGov envia ao SIGE
 	SigeHMACSecret       string // assina os webhooks ZapGov->SIGE (X-Signature)
+	GatewayRelayTTLH     int    // horas sem movimento até o relay expirar (0 = nunca)
+	GatewayPublicURL     string // URL pública do ZapGov (monta midia_url); vazia = mídia sem URL
+	GatewayMediaTTLMin   int    // validade (min) da URL assinada de mídia recebida
 }
 
 // Load lê variáveis de ambiente. O .env é opcional (em produção usa-se o ambiente real).
@@ -69,6 +72,9 @@ func Load() (*Config, error) {
 		SigeBaseURL:           os.Getenv("SIGE_BASE_URL"),
 		SigeAPIKey:            os.Getenv("SIGE_API_KEY"),
 		SigeHMACSecret:        os.Getenv("SIGE_HMAC_SECRET"),
+		GatewayRelayTTLH:      getEnvInt("GATEWAY_RELAY_TTL_H", 72),
+		GatewayPublicURL:      os.Getenv("GATEWAY_PUBLIC_URL"),
+		GatewayMediaTTLMin:    getEnvInt("GATEWAY_MEDIA_TTL_MIN", 30),
 	}
 
 	if cfg.DatabaseURL == "" {
