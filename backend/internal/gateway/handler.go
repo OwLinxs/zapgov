@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -105,6 +106,7 @@ func (h *Handler) enviar(c *fiber.Ctx) error {
 		case errors.Is(berr, errMidiaOrigem), errors.Is(berr, errMidiaGrande):
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"erro": "midia_invalida", "detalhe": berr.Error()})
 		case berr != nil:
+			slog.Warn("gateway: baixar mídia do SIGE", "telefone", in.Telefone, "err", berr)
 			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"erro": "midia_indisponivel"})
 		}
 		msg, err = h.sender.SendMediaUpload(c.Context(), in.Telefone, kindFromMime(arq.Mime), arq.Dados, arq.Nome, arq.Mime, in.Texto)
@@ -118,6 +120,7 @@ func (h *Handler) enviar(c *fiber.Ctx) error {
 		case errors.Is(err, messaging.ErrOptedOut):
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"erro": "opt_out"})
 		default:
+			slog.Warn("gateway: envio ao WhatsApp falhou", "telefone", in.Telefone, "tipo", in.Tipo, "err", err)
 			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"erro": "envio_falhou"})
 		}
 	}

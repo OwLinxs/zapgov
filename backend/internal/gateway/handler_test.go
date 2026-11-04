@@ -213,3 +213,18 @@ func TestEnviarMidiaSigeFora502(t *testing.T) {
 		t.Fatalf("esperava 502 midia_indisponivel: %d %v", code, body)
 	}
 }
+
+// Reproduz o main.go: o grupo protegido app.Group("", jwt) vira middleware de
+// todas as rotas registradas DEPOIS dele. O gateway precisa ser registrado antes,
+// senão o SIGE (só X-API-Key) leva 401 "não autenticado".
+func TestGatewayAntesDoGrupoJWT(t *testing.T) {
+	app := fiber.New()
+	NewHandler(&fakeCloser{}, fakeSender{wa: "wamid.OK"}, 2, "segredo", testAssinador, fakeBaixador{}).Register(app)
+	app.Group("", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "não autenticado"})
+	})
+	code, body := post(t, app, "/v1/mensagens", "segredo", `{"telefone":"55","tipo":"texto","texto":"oi"}`)
+	if code != 200 || body["wa_message_id"] != "wamid.OK" {
+		t.Fatalf("JWT interceptou /v1: %d %v", code, body)
+	}
+}

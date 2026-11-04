@@ -224,6 +224,37 @@ func main() {
 		return repo.CanAccess(ctx, event.ConversationID, sectors)
 	}) // GET /events (SSE por tenant, auth por ?token=)
 
+	// Gateway WhatsApp<->SIGE (relay bidirecional). Só liga quando SIGE_*/GATEWAY_*
+	// estão configurados. No tenant do gateway, o bot cru (abrir/retomar) e o relay
+	// substituem o motor de fluxo; os demais tenants seguem no fluxo normal. Ver
+	// deploy/GATEWAY.md.
+	//
+	// TEM de ficar antes do grupo protegido abaixo: app.Group("", authSvc.Required())
+	// vira um middleware de JWT para TODAS as rotas registradas depois dele, e o
+	// SIGE (X-API-Key, sem JWT) levaria 401 "não autenticado" em /v1/*.
+	if cfg.GatewayEnabled() {
+		gwRepo := gateway.NewRepository(pool)
+		gwClient := gateway.NewClient(cfg.SigeBaseURL, cfg.SigeAPIKey, cfg.SigeHMACSecret)
+		gwOutbox := gateway.NewOutbox(pool)
+		gwMidia := gateway.NovoAssinador(cfg.SigeHMACSecret, cfg.GatewayPublicURL, time.Duration(cfg.GatewayMediaTTLMin)*time.Minute)
+		gwSvc := gateway.NewService(gwRepo, gwClient, gwOutbox, svc, time.Duration(cfg.GatewayRelayTTLH)*time.Hour, gwMidia)
+		go gwOutbox.Run(ctx, gwSvc.Entregar, gwSvc.AvisarFalha) // repasse ao SIGE com retry
+		gwTenant := cfg.GatewayTenantID
+		svc.Gateway = func(ctx context.Context, in messaging.IncomingMessage) bool {
+			if tenantctx.From(ctx) != gwTenant {
+				return false // outros tenants seguem no fluxo normal
+			}
+			gwSvc.HandleInbound(ctx, in)
+			return true
+		}
+		gateway.NewHandler(gwRepo, svc, gwTenant, cfg.GatewayInboundAPIKey, gwMidia,
+			gateway.NovoBaixador(cfg.SigeBaseURL, cfg.SigeAPIKey)).Register(app)
+		if cfg.GatewayPublicURL == "" {
+			slog.Warn("gateway: GATEWAY_PUBLIC_URL vazia; mídias recebidas vão ao SIGE sem midia_url")
+		}
+		slog.Info("gateway SIGE ligado", "tenant", gwTenant, "sige", cfg.SigeBaseURL)
+	}
+
 	// ---------- Rotas PROTEGIDAS (exigem JWT) ----------
 	api := app.Group("", authSvc.Required())
 
@@ -345,33 +376,6 @@ func main() {
 	flowSvc := flow.NewService(flowRepo, svc)
 	svc.OnInbound = flowSvc.HandleInbound
 	flow.NewHandler(flowRepo).Register(api, opsOnly)
-
-	// Gateway WhatsApp<->SIGE (relay bidirecional). Só liga quando SIGE_*/GATEWAY_*
-	// estão configurados. No tenant do gateway, o bot cru (abrir/retomar) e o relay
-	// substituem o motor de fluxo; os demais tenants seguem no fluxo normal. Ver
-	// deploy/GATEWAY.md.
-	if cfg.GatewayEnabled() {
-		gwRepo := gateway.NewRepository(pool)
-		gwClient := gateway.NewClient(cfg.SigeBaseURL, cfg.SigeAPIKey, cfg.SigeHMACSecret)
-		gwOutbox := gateway.NewOutbox(pool)
-		gwMidia := gateway.NovoAssinador(cfg.SigeHMACSecret, cfg.GatewayPublicURL, time.Duration(cfg.GatewayMediaTTLMin)*time.Minute)
-		gwSvc := gateway.NewService(gwRepo, gwClient, gwOutbox, svc, time.Duration(cfg.GatewayRelayTTLH)*time.Hour, gwMidia)
-		go gwOutbox.Run(ctx, gwSvc.Entregar, gwSvc.AvisarFalha) // repasse ao SIGE com retry
-		gwTenant := cfg.GatewayTenantID
-		svc.Gateway = func(ctx context.Context, in messaging.IncomingMessage) bool {
-			if tenantctx.From(ctx) != gwTenant {
-				return false // outros tenants seguem no fluxo normal
-			}
-			gwSvc.HandleInbound(ctx, in)
-			return true
-		}
-		gateway.NewHandler(gwRepo, svc, gwTenant, cfg.GatewayInboundAPIKey, gwMidia,
-			gateway.NovoBaixador(cfg.SigeBaseURL, cfg.SigeAPIKey)).Register(app)
-		if cfg.GatewayPublicURL == "" {
-			slog.Warn("gateway: GATEWAY_PUBLIC_URL vazia; mídias recebidas vão ao SIGE sem midia_url")
-		}
-		slog.Info("gateway SIGE ligado", "tenant", gwTenant, "sige", cfg.SigeBaseURL)
-	}
 
 	// Assinatura do atendente no fim das mensagens (config por tenant).
 	msgHandler.SignatureEnabled = func(ctx context.Context) bool {
